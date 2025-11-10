@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "548567710035",
+    "project_id": "fyp-smartrecruit",
+    "storage_bucket": "fyp-smartrecruit.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:548567710035:android:af64de418f5139e510c9a6",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCds4bSGRwu8d-jdeHsXxiOoMcXy9Aqqwc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
