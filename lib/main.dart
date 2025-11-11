@@ -3,11 +3,23 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_application_2/screens/CandidateMatchingScreen.dart';
+import 'package:flutter_application_2/screens/AllCandidates.dart';
+import 'package:flutter_application_2/screens/AppliedCandidatesMatchingScreen.dart';
+import 'package:flutter_application_2/screens/CandidateApplicationScreen.dart';
+import 'package:flutter_application_2/screens/CandidateMatchDetailScreen.dart';
+import 'package:flutter_application_2/screens/CandidateOffers.dart';
+import 'package:flutter_application_2/screens/InterviewManagementScreen.dart';
+import 'package:flutter_application_2/screens/InterviewScheduleScreen.dart';
+import 'package:flutter_application_2/screens/JobMetricsScreen.dart';
+import 'package:flutter_application_2/screens/JobsAppliedByCandidatesScreen.dart';
 import 'package:flutter_application_2/screens/DraftJobsScreen.dart';
 import 'package:flutter_application_2/screens/In_App_Chat_Screen.dart';
 import 'package:flutter_application_2/screens/InterviewQuestionsScreen.dart';
 import 'package:flutter_application_2/screens/OfferLetterAutomationScreen.dart';
+import 'package:flutter_application_2/screens/PostedJobsScreen.dart';
+import 'package:flutter_application_2/screens/notifications_screen.dart';
+import 'package:flutter_application_2/services/AppNotificationManager.dart';
+import 'package:flutter_application_2/services/fcm_token_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +29,42 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path/path.dart' as p;
 //import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+// Background message handler
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    // Initialize Firebase in the background isolate
+    await Firebase.initializeApp();
+    print('Handling a background message: ${message.messageId}');
+
+    // You can process the message here, e.g., save it to local storage
+    if (message.notification != null) {
+      print('Background message title: ${message.notification!.title}');
+      print('Background message body: ${message.notification!.body}');
+    }
+
+    // Note: You cannot show UI directly in the background handler.
+    // If you want to show a notification, you can use flutter_local_notifications
+    // by setting up a separate isolate, but it's simpler to handle this in the foreground handler.
+  } catch (e) {
+    print('Error handling background message: $e');
+  }
+}
+
+// Initialize the FlutterLocalNotificationsPlugin
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+// Android notification channel
+const AndroidNotificationChannel channel = AndroidNotificationChannel(
+  'job_matches', // id
+  'Job Matches', // title
+  description: 'Notifications for new job matches',
+  importance: Importance.high,
+);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,16 +75,115 @@ void main() async {
     url: supabaseUrl,
     anonKey: supabaseAnonKey,
   );
-
   SystemChrome.setSystemUIOverlayStyle(
     SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
     ),
   );
+
+  // Set up background message handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Initialize local notifications for Android
+  try {
+    final androidPlugin =
+        flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(channel);
+    }
+  } catch (e) {
+    print('Error creating notification channel: $e');
+  }
+
+  // Initialize notification settings
+  const AndroidInitializationSettings androidSettings =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+  const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
+    requestAlertPermission: true,
+    requestBadgePermission: true,
+    requestSoundPermission: true,
+  );
+  const InitializationSettings initSettings = InitializationSettings(
+    android: androidSettings,
+    iOS: iosSettings,
+  );
+
+  // Initialize flutter_local_notifications
+  try {
+    await flutterLocalNotificationsPlugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        // Handle notification tap (e.g., navigate to a specific screen)
+        print('Notification tapped: ${response.payload}');
+      },
+    );
+  } catch (e) {
+    print('Error initializing local notifications: $e');
+  }
+
+  // Set foreground notification presentation options
+  try {
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+  } catch (e) {
+    print('Error setting foreground notification options: $e');
+  }
+
+  // Handle foreground messages
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    print('Received foreground message: ${message.messageId}');
+    if (message.notification != null) {
+      print('Foreground message title: ${message.notification!.title}');
+      print('Foreground message body: ${message.notification!.body}');
+
+      // Show a local notification for foreground messages
+      flutterLocalNotificationsPlugin.show(
+        message.hashCode,
+        message.notification!.title,
+        message.notification!.body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            channel.id,
+            channel.name,
+            channelDescription: channel.description,
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+          ),
+          iOS: const DarwinNotificationDetails(),
+        ),
+      );
+    }
+  });
+
+  // Handle notification taps when the app is opened from a terminated state
+  final RemoteMessage? initialMessage =
+      await FirebaseMessaging.instance.getInitialMessage();
+  if (initialMessage != null) {
+    print(
+        'App opened from terminated state with message: ${initialMessage.messageId}');
+    // Handle the initial message (e.g., navigate to a specific screen)
+  }
+
+  // Handle notification taps when the app is in the background and opened
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    print('App opened from background with message: ${message.messageId}');
+    // Handle the message (e.g., navigate to a specific screen)
+  });
+
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => UserProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(create: (_) => FCMTokenProvider()),
+        // Other providers...
+      ],
       child: MyApp(),
     ),
   );
@@ -96,6 +243,11 @@ class UserProvider extends ChangeNotifier {
     _enableNotifications = !_enableNotifications;
     notifyListeners();
   }
+}
+
+// Global variable to track "Don't show again" preference
+class GlobalPreferences {
+  static bool dontShowResumeUploadScreen = false;
 }
 
 final appTheme = ThemeData(
@@ -249,13 +401,10 @@ class AuthWrapper extends StatelessWidget {
                         return HomeScreen();
                       }
                     } else if (userData?['userType'] == 'jobseeker') {
-                      // Check if this is first login (profile not completed)
-                      if (userData?['profileCompleted'] == null ||
-                          userData?['profileCompleted'] == false) {
-                        // First time login - show profile setup screen
-                        return ResumeUploadScreen(); // or your ResumeUploadScreen
+                      if (GlobalPreferences.dontShowResumeUploadScreen ==
+                          false) {
+                        return ResumeUploadScreen();
                       } else {
-                        // Returning user - show home screen
                         return HomeScreen();
                       }
                     } else {
@@ -263,1654 +412,17 @@ class AuthWrapper extends StatelessWidget {
                     }
                   }
                 }
-                return LoadingScreen(); // Waiting for Firestore
+                return LoadingScreen();
               },
             );
           }
         }
-        return LoadingScreen(); // Waiting for auth
+        return LoadingScreen();
       },
     );
   }
 }
-/////////////////////////////////////////////////////////////
 
-// Required dependencies (add to pubspec.yaml):
-//   firebase_core, cloud_firestore, firebase_auth
-//   supabase_flutter, file_picker, image_picker, path_provider, open_file
-//   intl, timeago
-
-/////////////////////////////////////////////////
-
-/*
-
-class ProfileCreationScreen extends StatefulWidget {
-  const ProfileCreationScreen({Key? key}) : super(key: key);
-
-  @override
-  _ProfileCreationScreenState createState() => _ProfileCreationScreenState();
-}
-
-class _ProfileCreationScreenState extends State<ProfileCreationScreen> {
-  bool _isInitialScreen = true;
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isInitialScreen ? 'Create Your Profile' : 'Your Profile'),
-        centerTitle: true,
-        elevation: 0,
-        actions: [
-          if (!_isInitialScreen)
-            TextButton(
-              onPressed: () => _navigateToHomeScreen(),
-              child: Text(
-                'Skip For Now',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-        ],
-      ),
-      body:
-          _isInitialScreen ? _buildInitialScreen() : _buildProfileFormScreen(),
-    );
-  }
-
-  // Initial screen with resume upload option
-  Widget _buildInitialScreen() {
-    return Container(
-      padding: EdgeInsets.all(20),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.description,
-            size: 80,
-            color: Theme.of(context).primaryColor,
-          ),
-          SizedBox(height: 24),
-          Text(
-            'Create Your Job Profile',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 16),
-          Text(
-            'Upload your resume to quickly fill your profile or create it manually',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[700],
-            ),
-          ),
-          SizedBox(height: 40),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              padding: EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            onPressed: _pickAndUploadResume,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.upload_file),
-                SizedBox(width: 10),
-                Text('Upload Resume', style: TextStyle(fontSize: 16)),
-              ],
-            ),
-          ),
-          SizedBox(height: 20),
-          TextButton(
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-            ),
-            onPressed: () {
-              setState(() {
-                _isInitialScreen = false;
-              });
-            },
-            child: Text('Skip and Continue', style: TextStyle(fontSize: 16)),
-          ),
-          SizedBox(height: 20),
-          if (_isUploading)
-            Column(
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 10),
-                Text('Uploading resume...'),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfileFormScreen() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      child: Form(
-        key: _formKey,
-        child: Scrollbar(
-          controller: _scrollController,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Profile Picture Section
-                _buildSectionTitle('Profile Picture'),
-                Card(
-                  elevation: 2,
-                  margin: EdgeInsets.only(bottom: 24),
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        Center(
-                          child: GestureDetector(
-                            onTap: _pickProfilePicture,
-                            child: CircleAvatar(
-                              radius: 60,
-                              backgroundColor: Colors.grey[300],
-                              backgroundImage: _profileImage != null
-                                  ? FileImage(_profileImage!)
-                                  : null,
-                              child: _profileImage == null
-                                  ? Icon(Icons.person,
-                                      size: 60, color: Colors.grey[600])
-                                  : null,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 16),
-                        Center(
-                          child: TextButton.icon(
-                            icon: Icon(Icons.camera_alt),
-                            label: Text('Upload Profile Picture'),
-                            onPressed: _pickProfilePicture,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Resume status (if uploaded)
-                if (_resumeFile != null)
-                  Card(
-                    margin: EdgeInsets.only(bottom: 16),
-                    color: Colors.green[50],
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Icon(Icons.check_circle, color: Colors.green),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Resume Uploaded',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green[700],
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  _resumeFile?.path.split('/').last ??
-                                      'Resume file',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            icon: Icon(Icons.upload_file, color: Colors.blue),
-                            onPressed: _pickAndUploadResume,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // Personal Information Section
-                _buildSectionTitle('Personal Information'),
-                Card(
-                  elevation: 2,
-                  margin: EdgeInsets.only(bottom: 24),
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        // Full Name Field
-                        TextFormField(
-                          controller: _nameController,
-                          decoration: InputDecoration(
-                            labelText: 'Full Name',
-                            prefixIcon: Icon(Icons.person),
-                            hintText: 'First and Last Name',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your name';
-                            }
-                            return null;
-                          },
-                        ),
-                        SizedBox(height: 16),
-
-                        // Professional Title Field
-                        TextFormField(
-                          controller: _titleController,
-                          decoration: InputDecoration(
-                            labelText: 'Professional Title',
-                            prefixIcon: Icon(Icons.work),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your professional title';
-                            }
-                            return null;
-                          },
-                        ),
-                        SizedBox(height: 16),
-
-                        // Email Field
-                        TextFormField(
-                          controller: _emailController,
-                          decoration: InputDecoration(
-                            labelText: 'Email',
-                            prefixIcon: Icon(Icons.email),
-                          ),
-                          keyboardType: TextInputType.emailAddress,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your email';
-                            }
-                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                                .hasMatch(value)) {
-                              return 'Please enter a valid email address';
-                            }
-                            return null;
-                          },
-                        ),
-                        SizedBox(height: 16),
-
-                        // Phone Number Field
-                        TextFormField(
-                          controller: _phoneController,
-                          decoration: InputDecoration(
-                            labelText: 'Phone Number',
-                            prefixIcon: Icon(Icons.phone),
-                          ),
-                          keyboardType: TextInputType.phone,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your phone number';
-                            }
-                            return null;
-                          },
-                        ),
-                        SizedBox(height: 16),
-
-                        // Location Field
-                        TextFormField(
-                          controller: _locationController,
-                          decoration: InputDecoration(
-                            labelText: 'Location',
-                            prefixIcon: Icon(Icons.location_on),
-                            hintText: 'City, Country',
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your location';
-                            }
-                            return null;
-                          },
-                        ),
-                        SizedBox(height: 16),
-
-                        // LinkedIn/Portfolio/Website Field
-                        TextFormField(
-                          controller: _websiteController,
-                          decoration: InputDecoration(
-                            labelText: 'LinkedIn/Portfolio/Website',
-                            prefixIcon: Icon(Icons.link),
-                            hintText: 'https://',
-                          ),
-                          keyboardType: TextInputType.url,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Professional Summary Section
-                _buildSectionTitle('Professional Summary'),
-                Card(
-                  elevation: 2,
-                  margin: EdgeInsets.only(bottom: 24),
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Create a short, compelling summary highlighting your experience, key skills, and expertise.',
-                          style:
-                              TextStyle(color: Colors.grey[700], fontSize: 14),
-                        ),
-                        SizedBox(height: 16),
-                        TextFormField(
-                          controller: _summaryController,
-                          decoration: InputDecoration(
-                            labelText: 'Professional Summary',
-                            alignLabelWithHint: true,
-                          ),
-                          maxLines: 4,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your professional summary';
-                            }
-                            return null;
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Work Experience Section
-                _buildSectionTitle('Work Experience'),
-                ..._workExperienceWidgets(),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 24.0),
-                  child: Center(
-                    child: OutlinedButton.icon(
-                      icon: Icon(Icons.add),
-                      label: Text('Add Work Experience'),
-                      onPressed: _addWorkExperience,
-                    ),
-                  ),
-                ),
-
-                // Education & Certifications Section
-                _buildSectionTitle('Education & Certifications'),
-                ..._educationWidgets(),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 24.0),
-                  child: Center(
-                    child: OutlinedButton.icon(
-                      icon: Icon(Icons.add),
-                      label: Text('Add Education'),
-                      onPressed: _addEducation,
-                    ),
-                  ),
-                ),
-
-                // Skills Section
-                _buildSectionTitle('Skills'),
-                Card(
-                  elevation: 2,
-                  margin: EdgeInsets.only(bottom: 24),
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Technical Skills
-                        Text(
-                          'Technical/Hard Skills',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            ..._selectedTechnicalSkills.map((skill) => Chip(
-                                  label: Text(skill),
-                                  deleteIcon: Icon(Icons.close, size: 18),
-                                  onDeleted: () => _removeTechnicalSkill(skill),
-                                )),
-                            ActionChip(
-                              avatar: Icon(Icons.add, size: 18),
-                              label: Text('Add'),
-                              onPressed: _showTechnicalSkillsDialog,
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 16),
-
-                        // Soft Skills
-                        Text(
-                          'Soft Skills',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            ..._selectedSoftSkills.map((skill) => Chip(
-                                  label: Text(skill),
-                                  deleteIcon: Icon(Icons.close, size: 18),
-                                  onDeleted: () => _removeSoftSkill(skill),
-                                )),
-                            ActionChip(
-                              avatar: Icon(Icons.add, size: 18),
-                              label: Text('Add'),
-                              onPressed: _showSoftSkillsDialog,
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 16),
-
-                        // Add New Skills with Proficiency
-                        Text(
-                          'Custom Skills',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        SizedBox(height: 8),
-                        ..._customSkillWidgets(),
-                        OutlinedButton.icon(
-                          icon: Icon(Icons.add),
-                          label: Text('Add Custom Skill'),
-                          onPressed: _addCustomSkill,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Job Preferences Section
-                _buildSectionTitle('Job Preferences'),
-                Card(
-                  elevation: 2,
-                  margin: EdgeInsets.only(bottom: 24),
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Desired Job Title/Role
-                        TextFormField(
-                          controller: _desiredRoleController,
-                          decoration: InputDecoration(
-                            labelText: 'Desired Job Title/Role',
-                            prefixIcon: Icon(Icons.work_outline),
-                          ),
-                        ),
-                        SizedBox(height: 16),
-
-                        // Industry Preference
-                        TextFormField(
-                          controller: _industryPreferenceController,
-                          decoration: InputDecoration(
-                            labelText: 'Industry Preference',
-                            prefixIcon: Icon(Icons.business),
-                          ),
-                        ),
-                        SizedBox(height: 16),
-
-                        // Job Type
-                        DropdownButtonFormField<String>(
-                          decoration: InputDecoration(
-                            labelText: 'Job Type',
-                            prefixIcon: Icon(Icons.business_center),
-                          ),
-                          value: _jobType,
-                          items: [
-                            'Full-time',
-                            'Part-time',
-                            'Contract',
-                            'Remote',
-                            'Hybrid'
-                          ].map((String value) {
-                            return DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(value),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            if (newValue != null) {
-                              setState(() {
-                                _jobType = newValue;
-                              });
-                            }
-                          },
-                        ),
-                        SizedBox(height: 16),
-
-                        // Expected Salary Range
-                        TextFormField(
-                          controller: _salaryExpectationController,
-                          decoration: InputDecoration(
-                            labelText: 'Expected Salary Range (Optional)',
-                            prefixIcon: Icon(Icons.attach_money),
-                          ),
-                        ),
-                        SizedBox(height: 16),
-
-                        // Location Preference
-                        TextFormField(
-                          controller: _locationPreferenceController,
-                          decoration: InputDecoration(
-                            labelText: 'Location Preference',
-                            prefixIcon: Icon(Icons.location_city),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Projects & Achievements Section
-                _buildSectionTitle('Projects & Achievements'),
-                ..._projectWidgets(),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 24.0),
-                  child: Center(
-                    child: OutlinedButton.icon(
-                      icon: Icon(Icons.add),
-                      label: Text('Add Project'),
-                      onPressed: _addProject,
-                    ),
-                  ),
-                ),
-
-                // Languages Known Section
-                _buildSectionTitle('Languages'),
-                ..._languageWidgets(),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 24.0),
-                  child: Center(
-                    child: OutlinedButton.icon(
-                      icon: Icon(Icons.add),
-                      label: Text('Add Language'),
-                      onPressed: _addLanguage,
-                    ),
-                  ),
-                ),
-
-                // Submit Button
-                SizedBox(height: 32),
-                Center(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onPressed: _isUploading ? null : _saveProfileData,
-                    child: Text(
-                      'Save Profile',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 32),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-// Section title widget
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).primaryColor,
-        ),
-      ),
-    );
-  }
-
-// Work Experience Section Widgets
-  List<Widget> _workExperienceWidgets() {
-    return _workExperiences.asMap().entries.map((entry) {
-      int idx = entry.key;
-      WorkExperience exp = entry.value;
-      return Card(
-        elevation: 2,
-        margin: EdgeInsets.only(bottom: 16),
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Experience ${idx + 1}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: () => _removeWorkExperience(idx),
-                  ),
-                ],
-              ),
-              SizedBox(height: 8),
-              TextFormField(
-                initialValue: exp.jobTitle,
-                decoration: InputDecoration(
-                  labelText: 'Job Title',
-                  prefixIcon: Icon(Icons.work),
-                ),
-                onChanged: (value) => _workExperiences[idx].jobTitle = value,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter job title';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                initialValue: exp.company,
-                decoration: InputDecoration(
-                  labelText: 'Company Name',
-                  prefixIcon: Icon(Icons.business),
-                ),
-                onChanged: (value) => _workExperiences[idx].company = value,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter company name';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      initialValue: exp.startDate,
-                      decoration: InputDecoration(
-                        labelText: 'Start Date',
-                        prefixIcon: Icon(Icons.calendar_today),
-                        hintText: 'MM/YYYY',
-                      ),
-                      onChanged: (value) =>
-                          _workExperiences[idx].startDate = value,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Required';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      initialValue: exp.endDate,
-                      decoration: InputDecoration(
-                        labelText: 'End Date',
-                        prefixIcon: Icon(Icons.calendar_today),
-                        hintText: 'MM/YYYY or Present',
-                      ),
-                      onChanged: (value) =>
-                          _workExperiences[idx].endDate = value,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                initialValue: exp.responsibilities,
-                decoration: InputDecoration(
-                  labelText: 'Key Responsibilities & Achievements',
-                  alignLabelWithHint: true,
-                ),
-                maxLines: 4,
-                onChanged: (value) =>
-                    _workExperiences[idx].responsibilities = value,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your responsibilities';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-      );
-    }).toList();
-  }
-
-// Education Widgets
-  List<Widget> _educationWidgets() {
-    return _educations.asMap().entries.map((entry) {
-      int idx = entry.key;
-      Education edu = entry.value;
-      return Card(
-        elevation: 2,
-        margin: EdgeInsets.only(bottom: 16),
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Education ${idx + 1}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: () => _removeEducation(idx),
-                  ),
-                ],
-              ),
-              SizedBox(height: 8),
-              TextFormField(
-                initialValue: edu.degree,
-                decoration: InputDecoration(
-                  labelText: 'Degree/Diploma',
-                  prefixIcon: Icon(Icons.school),
-                ),
-                onChanged: (value) => _educations[idx].degree = value,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your degree';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                initialValue: edu.institution,
-                decoration: InputDecoration(
-                  labelText: 'University/Institution',
-                  prefixIcon: Icon(Icons.account_balance),
-                ),
-                onChanged: (value) => _educations[idx].institution = value,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter institution name';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                initialValue: edu.graduationYear,
-                decoration: InputDecoration(
-                  labelText: 'Year of Graduation',
-                  prefixIcon: Icon(Icons.date_range),
-                ),
-                keyboardType: TextInputType.number,
-                onChanged: (value) => _educations[idx].graduationYear = value,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter graduation year';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                initialValue: edu.certifications,
-                decoration: InputDecoration(
-                  labelText: 'Certifications',
-                  alignLabelWithHint: true,
-                  hintText: 'List your certifications, one per line',
-                ),
-                maxLines: 3,
-                onChanged: (value) => _educations[idx].certifications = value,
-              ),
-            ],
-          ),
-        ),
-      );
-    }).toList();
-  }
-
-// Custom Skills Widgets
-  List<Widget> _customSkillWidgets() {
-    return _customSkills.asMap().entries.map((entry) {
-      int idx = entry.key;
-      CustomSkill skill = entry.value;
-      return Padding(
-        padding: EdgeInsets.only(bottom: 16),
-        child: Row(
-          children: [
-            Expanded(
-              flex: 2,
-              child: TextFormField(
-                initialValue: skill.name,
-                decoration: InputDecoration(
-                  labelText: 'Skill Name',
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                ),
-                onChanged: (value) => _customSkills[idx].name = value,
-              ),
-            ),
-            SizedBox(width: 16),
-            Expanded(
-              flex: 2,
-              child: DropdownButtonFormField<String>(
-                decoration: InputDecoration(
-                  labelText: 'Proficiency',
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                ),
-                value: skill.level,
-                items:
-                    ['Beginner', 'Intermediate', 'Expert'].map((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _customSkills[idx].level = newValue;
-                    });
-                  }
-                },
-              ),
-            ),
-            IconButton(
-              icon: Icon(Icons.delete_outline, color: Colors.red),
-              onPressed: () => _removeCustomSkill(idx),
-            ),
-          ],
-        ),
-      );
-    }).toList();
-  }
-
-// Project Widgets
-  List<Widget> _projectWidgets() {
-    return _projects.asMap().entries.map((entry) {
-      int idx = entry.key;
-      Project project = entry.value;
-      return Card(
-        elevation: 2,
-        margin: EdgeInsets.only(bottom: 16),
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Project ${idx + 1}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: () => _removeProject(idx),
-                  ),
-                ],
-              ),
-              SizedBox(height: 8),
-              TextFormField(
-                initialValue: project.name,
-                decoration: InputDecoration(
-                  labelText: 'Project Name',
-                  prefixIcon: Icon(Icons.folder_special),
-                ),
-                onChanged: (value) => _projects[idx].name = value,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter project name';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                initialValue: project.description,
-                decoration: InputDecoration(
-                  labelText: 'Project Description',
-                  alignLabelWithHint: true,
-                ),
-                maxLines: 3,
-                onChanged: (value) => _projects[idx].description = value,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please describe the project';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                initialValue: project.role,
-                decoration: InputDecoration(
-                  labelText: 'Your Role & Contributions',
-                  alignLabelWithHint: true,
-                ),
-                maxLines: 2,
-                onChanged: (value) => _projects[idx].role = value,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please describe your role';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                initialValue: project.outcome,
-                decoration: InputDecoration(
-                  labelText: 'Outcome/Impact',
-                  alignLabelWithHint: true,
-                ),
-                maxLines: 2,
-                onChanged: (value) => _projects[idx].outcome = value,
-              ),
-            ],
-          ),
-        ),
-      );
-    }).toList();
-  }
-
-// Language Widgets
-  List<Widget> _languageWidgets() {
-    return _languages.asMap().entries.map((entry) {
-      int idx = entry.key;
-      Language language = entry.value;
-      return Card(
-        elevation: 2,
-        margin: EdgeInsets.only(bottom: 16),
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextFormField(
-                  initialValue: language.name,
-                  decoration: InputDecoration(
-                    labelText: 'Language',
-                    prefixIcon: Icon(Icons.language),
-                  ),
-                  onChanged: (value) => _languages[idx].name = value,
-                ),
-              ),
-              SizedBox(width: 16),
-              Expanded(
-                flex: 2,
-                child: DropdownButtonFormField<String>(
-                  decoration: InputDecoration(
-                    labelText: 'Proficiency',
-                    prefixIcon: Icon(Icons.grade),
-                  ),
-                  value: language.proficiency,
-                  items: ['Basic', 'Intermediate', 'Fluent', 'Native']
-                      .map((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value),
-                    );
-                  }).toList(),
-                  onChanged: (String? newValue) {
-                    if (newValue != null) {
-                      setState(() {
-                        _languages[idx].proficiency = newValue;
-                      });
-                    }
-                  },
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.delete_outline, color: Colors.red),
-                onPressed: () => _removeLanguage(idx),
-              ),
-            ],
-          ),
-        ),
-      );
-    }).toList();
-  }
-
-// Add these methods to your class for managing form fields
-  void _pickProfilePicture() async {
-    final ImagePicker _picker = ImagePicker();
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-
-    if (image != null) {
-      setState(() {
-        _profileImage = File(image.path);
-        _isProfileImageChanged = true;
-      });
-    }
-  }
-
-  void _pickAndUploadResume() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'doc', 'docx'],
-    );
-
-    if (result != null) {
-      setState(() {
-        _resumeFile = File(result.files.single.path!);
-        _isResumeChanged = true;
-      });
-    }
-  }
-
-  void _addWorkExperience() {
-    setState(() {
-      _workExperiences.add(WorkExperience());
-    });
-  }
-
-  void _removeWorkExperience(int index) {
-    setState(() {
-      _workExperiences.removeAt(index);
-    });
-  }
-
-  void _addEducation() {
-    setState(() {
-      _educations.add(Education());
-    });
-  }
-
-  void _removeEducation(int index) {
-    setState(() {
-      _educations.removeAt(index);
-    });
-  }
-
-  void _addCustomSkill() {
-    setState(() {
-      _customSkills.add(CustomSkill());
-    });
-  }
-
-  void _removeCustomSkill(int index) {
-    setState(() {
-      _customSkills.removeAt(index);
-    });
-  }
-
-  void _showTechnicalSkillsDialog() {
-    final TextEditingController _skillController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Add Technical Skill'),
-          content: TextField(
-            controller: _skillController,
-            decoration: InputDecoration(
-              hintText: 'Enter skill name',
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: Text('Cancel'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: Text('Add'),
-              onPressed: () {
-                if (_skillController.text.isNotEmpty) {
-                  setState(() {
-                    _selectedTechnicalSkills.add(_skillController.text);
-                  });
-                }
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _removeTechnicalSkill(String skill) {
-    setState(() {
-      _selectedTechnicalSkills.remove(skill);
-    });
-  }
-
-  void _showSoftSkillsDialog() {
-    final TextEditingController _skillController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Add Soft Skill'),
-          content: TextField(
-            controller: _skillController,
-            decoration: InputDecoration(
-              hintText: 'Enter skill name',
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: Text('Cancel'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: Text('Add'),
-              onPressed: () {
-                if (_skillController.text.isNotEmpty) {
-                  setState(() {
-                    _selectedSoftSkills.add(_skillController.text);
-                  });
-                }
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _removeSoftSkill(String skill) {
-    setState(() {
-      _selectedSoftSkills.remove(skill);
-    });
-  }
-
-  void _addProject() {
-    setState(() {
-      _projects.add(Project());
-    });
-  }
-
-  void _removeProject(int index) {
-    setState(() {
-      _projects.removeAt(index);
-    });
-  }
-
-  void _addLanguage() {
-    setState(() {
-      _languages.add(Language());
-    });
-  }
-
-  void _removeLanguage(int index) {
-    setState(() {
-      _languages.removeAt(index);
-    });
-  }
-
-  void _saveProfileData() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isUploading = true;
-      });
-
-      try {
-        // Create profile data object
-        Map<String, dynamic> profileData = {
-          'personalInfo': {
-            'name': _nameController.text,
-            'professionalTitle': _titleController.text,
-            'email': _emailController.text,
-            'phone': _phoneController.text,
-            'location': _locationController.text,
-            'website': _websiteController.text,
-          },
-          'professionalSummary': _summaryController.text,
-          'workExperiences': _workExperiences.map((e) => e.toJson()).toList(),
-          'educations': _educations.map((e) => e.toJson()).toList(),
-          'skills': {
-            'technicalSkills': _selectedTechnicalSkills,
-            'softSkills': _selectedSoftSkills,
-            'customSkills': _customSkills.map((e) => e.toJson()).toList(),
-          },
-          'jobPreferences': {
-            'desiredRole': _desiredRoleController.text,
-            'industryPreference': _industryPreferenceController.text,
-            'jobType': _jobType,
-            'salaryExpectation': _salaryExpectationController.text,
-            'locationPreference': _locationPreferenceController.text,
-          },
-          'projects': _projects.map((e) => e.toJson()).toList(),
-          'languages': _languages.map((e) => e.toJson()).toList(),
-        };
-
-        // Upload profile picture if changed
-        String? profileImageUrl;
-        if (_isProfileImageChanged && _profileImage != null) {
-          profileImageUrl = await _uploadFile(
-            _profileImage!,
-            'profile_pictures/${FirebaseAuth.instance.currentUser!.uid}',
-          );
-          profileData['profileImageUrl'] = profileImageUrl;
-        }
-
-        // Upload resume if changed
-        String? resumeUrl;
-        if (_isResumeChanged && _resumeFile != null) {
-          resumeUrl = await _uploadFile(
-            _resumeFile!,
-            'resumes/${FirebaseAuth.instance.currentUser!.uid}',
-          );
-          profileData['resumeUrl'] = resumeUrl;
-        }
-
-        // Save to Firestore
-        await FirebaseFirestore.instance
-            .collection('JobSeekersProfiles')
-            .doc(FirebaseAuth.instance.currentUser!.uid)
-            .set(profileData, SetOptions(merge: true));
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Profile saved successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } catch (e) {
-        print('Error saving profile: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving profile. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      } finally {
-        setState(() {
-          _isUploading = false;
-        });
-      }
-    }
-  }
-
-  Future<String> _uploadFile(File file, String path) async {
-    final ref = FirebaseStorage.instance.ref().child(path);
-    final uploadTask = ref.putFile(file);
-    final snapshot = await uploadTask;
-    return await snapshot.ref.getDownloadURL();
-  }
-
-// Initialize controller and form fields
-  void _initFormFields() async {
-    try {
-      // Get user profile from Firestore
-      DocumentSnapshot doc = await FirebaseFirestore.instance
-          .collection('JobSeekersProfiles')
-          .doc(FirebaseAuth.instance.currentUser!.uid)
-          .get();
-
-      if (doc.exists) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-
-        setState(() {
-          // Personal Info
-          if (data['personalInfo'] != null) {
-            _nameController.text = data['personalInfo']['name'] ?? '';
-            _titleController.text =
-                data['personalInfo']['professionalTitle'] ?? '';
-            _emailController.text = data['personalInfo']['email'] ?? '';
-            _phoneController.text = data['personalInfo']['phone'] ?? '';
-            _locationController.text = data['personalInfo']['location'] ?? '';
-            _websiteController.text = data['personalInfo']['website'] ?? '';
-          }
-
-          // Professional Summary
-          _summaryController.text = data['professionalSummary'] ?? '';
-
-          // Work Experiences
-          if (data['workExperiences'] != null) {
-            _workExperiences = List<WorkExperience>.from(
-              (data['workExperiences'] as List).map(
-                (e) => WorkExperience.fromJson(e),
-              ),
-            );
-          }
-
-          // Educations
-          if (data['educations'] != null) {
-            _educations = List<Education>.from(
-              (data['educations'] as List).map(
-                (e) => Education.fromJson(e),
-              ),
-            );
-          }
-
-          // Skills
-          if (data['skills'] != null) {
-            if (data['skills']['technicalSkills'] != null) {
-              _selectedTechnicalSkills =
-                  List<String>.from(data['skills']['technicalSkills']);
-            }
-            if (data['skills']['softSkills'] != null) {
-              _selectedSoftSkills =
-                  List<String>.from(data['skills']['softSkills']);
-            }
-            if (data['skills']['customSkills'] != null) {
-              _customSkills = List<CustomSkill>.from(
-                (data['skills']['customSkills'] as List).map(
-                  (e) => CustomSkill.fromJson(e),
-                ),
-              );
-            }
-          }
-
-          // Job Preferences
-          if (data['jobPreferences'] != null) {
-            _desiredRoleController.text =
-                data['jobPreferences']['desiredRole'] ?? '';
-            _industryPreferenceController.text =
-                data['jobPreferences']['industryPreference'] ?? '';
-            _jobType = data['jobPreferences']['jobType'] ?? 'Full-time';
-            _salaryExpectationController.text =
-                data['jobPreferences']['salaryExpectation'] ?? '';
-            _locationPreferenceController.text =
-                data['jobPreferences']['locationPreference'] ?? '';
-          }
-
-          // Projects
-          if (data['projects'] != null) {
-            _projects = List<Project>.from(
-              (data['projects'] as List).map(
-                (e) => Project.fromJson(e),
-              ),
-            );
-          }
-
-          // Languages
-          if (data['languages'] != null) {
-            _languages = List<Language>.from(
-              (data['languages'] as List).map(
-                (e) => Language.fromJson(e),
-              ),
-            );
-          }
-
-          // Profile Image
-          if (data['profileImageUrl'] != null) {
-            _profileImageUrl = data['profileImageUrl'];
-          }
-
-          // Resume
-          if (data['resumeUrl'] != null) {
-            _resumeUrl = data['resumeUrl'];
-          }
-        });
-      }
-    } catch (e) {
-      print('Error loading profile: $e');
-    }
-  }
-
-// Variables to be declared in your class
-  final _formKey = GlobalKey<FormState>();
-  final ScrollController _scrollController = ScrollController();
-
-// Personal Information
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _locationController = TextEditingController();
-  final TextEditingController _websiteController = TextEditingController();
-
-// Professional Summary
-  final TextEditingController _summaryController = TextEditingController();
-
-// Job Preferences
-  final TextEditingController _desiredRoleController = TextEditingController();
-  final TextEditingController _industryPreferenceController =
-      TextEditingController();
-  String _jobType = 'Full-time';
-  final TextEditingController _salaryExpectationController =
-      TextEditingController();
-  final TextEditingController _locationPreferenceController =
-      TextEditingController();
-
-// Work Experience
-  List<WorkExperience> _workExperiences = [];
-
-// Education
-  List<Education> _educations = [];
-
-// Skills
-  List<String> _selectedTechnicalSkills = [];
-  List<String> _selectedSoftSkills = [];
-  List<CustomSkill> _customSkills = [];
-
-// Projects
-  List<Project> _projects = [];
-
-// Languages
-  List<Language> _languages = [];
-
-// Files
-  File? _profileImage;
-  bool _isProfileImageChanged = false;
-  String? _profileImageUrl;
-  File? _resumeFile;
-  bool _isResumeChanged = false;
-  String? _resumeUrl;
-
-// Loading state
-  bool _isUploading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initFormFields();
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    _nameController.dispose();
-    _titleController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _locationController.dispose();
-    _websiteController.dispose();
-    _summaryController.dispose();
-    _desiredRoleController.dispose();
-    _industryPreferenceController.dispose();
-    _salaryExpectationController.dispose();
-    _locationPreferenceController.dispose();
-    super.dispose();
-  }
-
-  // Navigate to Home Screen
-  void _navigateToHomeScreen() {
-    Navigator.pushReplacementNamed(context, '/HomeScreen');
-  }
-}
-
-// Add these models to your class
-class WorkExperience {
-  String jobTitle;
-  String company;
-  String startDate;
-  String endDate;
-  String responsibilities;
-
-  WorkExperience({
-    this.jobTitle = '',
-    this.company = '',
-    this.startDate = '',
-    this.endDate = '',
-    this.responsibilities = '',
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'jobTitle': jobTitle,
-      'company': company,
-      'startDate': startDate,
-      'endDate': endDate,
-      'responsibilities': responsibilities,
-    };
-  }
-
-  factory WorkExperience.fromJson(Map<String, dynamic> json) {
-    return WorkExperience(
-      jobTitle: json['jobTitle'] ?? '',
-      company: json['company'] ?? '',
-      startDate: json['startDate'] ?? '',
-      endDate: json['endDate'] ?? '',
-      responsibilities: json['responsibilities'] ?? '',
-    );
-  }
-}
-
-class Education {
-  String degree;
-  String institution;
-  String graduationYear;
-  String certifications;
-
-  Education({
-    this.degree = '',
-    this.institution = '',
-    this.graduationYear = '',
-    this.certifications = '',
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'degree': degree,
-      'institution': institution,
-      'graduationYear': graduationYear,
-      'certifications': certifications,
-    };
-  }
-
-  factory Education.fromJson(Map<String, dynamic> json) {
-    return Education(
-      degree: json['degree'] ?? '',
-      institution: json['institution'] ?? '',
-      graduationYear: json['graduationYear'] ?? '',
-      certifications: json['certifications'] ?? '',
-    );
-  }
-}
-
-class CustomSkill {
-  String name;
-  String level;
-
-  CustomSkill({
-    this.name = '',
-    this.level = 'Beginner',
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'level': level,
-    };
-  }
-
-  factory CustomSkill.fromJson(Map<String, dynamic> json) {
-    return CustomSkill(
-      name: json['name'] ?? '',
-      level: json['level'] ?? 'Beginner',
-    );
-  }
-}
-
-class Project {
-  String name;
-  String description;
-  String role;
-  String outcome;
-
-  Project({
-    this.name = '',
-    this.description = '',
-    this.role = '',
-    this.outcome = '',
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'description': description,
-      'role': role,
-      'outcome': outcome,
-    };
-  }
-
-  factory Project.fromJson(Map<String, dynamic> json) {
-    return Project(
-      name: json['name'] ?? '',
-      description: json['description'] ?? '',
-      role: json['role'] ?? '',
-      outcome: json['outcome'] ?? '',
-    );
-  }
-}
-
-class Language {
-  String name;
-  String proficiency;
-
-  Language({
-    this.name = '',
-    this.proficiency = 'Basic',
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'proficiency': proficiency,
-    };
-  }
-
-  factory Language.fromJson(Map<String, dynamic> json) {
-    return Language(
-      name: json['name'] ?? '',
-      proficiency: json['proficiency'] ?? 'Basic',
-    );
-  }
-}
-*/
 class WelcomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -3765,6 +2277,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
   }
 }
 
+// Updated HomeScreen with icon changes
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -3785,7 +2298,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
     _animationController.forward();
 
-    // Initialize features after the widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initFeatures();
     });
@@ -3795,7 +2307,6 @@ class _HomeScreenState extends State<HomeScreen>
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     final isRecruiter = userProvider.isRecruiter;
 
-    // Clear existing features
     _primaryFeatures.clear();
     _secondaryFeatures.clear();
 
@@ -3809,52 +2320,68 @@ class _HomeScreenState extends State<HomeScreen>
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => DraftJobsScreen()),
+              MaterialPageRoute(builder: (context) => PostedJobsScreen()),
             );
           },
         ),
         Feature(
-          icon: Icons.description,
-          title: 'My Jobs',
-          color: Color(0xFF1E3A8A),
-          onTap: () {
-            Navigator.pushNamed(context, '/my-jobs');
-          },
-        ),
-        Feature(
           icon: Icons.people,
-          title: 'Candidates',
+          title: 'Candidates Pool',
           color: Color(0xFF4F46E5),
           onTap: () {
-            Navigator.pushNamed(context, '/candidates');
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => CandidateMatchScreen()),
+            );
           },
         ),
         Feature(
           icon: Icons.event,
-          title: 'Interviews',
+          title: 'Scheduled Interviews',
           color: Color(0xFF0891B2),
           onTap: () {
-            Navigator.pushNamed(context, '/interviews');
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => InterviewManagementScreen()),
+            );
           },
         ),
-      ]);
-
-      // Secondary features for recruiters
-      _secondaryFeatures.addAll([
         Feature(
           icon: Icons.question_answer,
           title: 'Interview Questions',
-          color: Color(0xFF9333EA),
+          color: Color(0xFF0891B2),
           onTap: () {
-            Navigator.pushNamed(context, '/interview-questions');
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => AIInterviewQuestionsScreen()),
+            );
           },
         ),
         Feature(
           icon: Icons.mail,
-          title: 'Offers',
-          color: Color(0xFFD97706),
+          title: 'Offers Management',
+          color: Color.fromARGB(255, 195, 151, 197),
           onTap: () {
-            Navigator.pushNamed(context, '/offers');
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => OfferLetterAutomationScreen()),
+            );
+          },
+        ),
+        Feature(
+          icon: Icons.message,
+          title: 'My Chats',
+          color: Color.fromARGB(255, 83, 211, 134),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => _MyChatsPage(isRecruiter: true),
+              ),
+            );
           },
         ),
       ]);
@@ -3866,62 +2393,69 @@ class _HomeScreenState extends State<HomeScreen>
           title: 'Find Jobs',
           color: Color(0xFF1E3A8A),
           onTap: () {
-            Navigator.pushNamed(context, '/find-jobs');
-          },
-        ),
-        Feature(
-          icon: Icons.person,
-          title: 'My Profile',
-          color: Color(0xFF0D9488),
-          onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => JobseekerProfileForm()),
+              MaterialPageRoute(
+                  builder: (context) => CandidateApplicationScreen()),
             );
           },
         ),
         Feature(
           icon: Icons.bookmark,
-          title: 'Saved Jobs',
+          title: 'Applied Jobs',
           color: Color(0xFF4F46E5),
           onTap: () {
-            Navigator.pushNamed(context, '/saved-jobs');
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => AppliedJobsScreen()),
+            );
           },
         ),
         Feature(
           icon: Icons.work,
-          title: 'Applications',
+          title: 'My Interviews',
           color: Color(0xFFD97706),
           onTap: () {
-            Navigator.pushNamed(context, '/my-applications');
-          },
-        ),
-      ]);
-
-      // Secondary features for job seekers
-      _secondaryFeatures.addAll([
-        Feature(
-          icon: Icons.upload_file,
-          title: 'Resume',
-          color: Color(0xFF9333EA),
-          onTap: () {
-            Navigator.pushNamed(context, '/resume-manager');
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => InterviewScheduleScreen()),
+            );
           },
         ),
         Feature(
-          icon: Icons.event,
-          title: 'Interviews',
-          color: Color(0xFF0891B2),
+          icon: Icons.work,
+          title: 'Jobs Offered',
+          color: Color.fromARGB(255, 212, 154, 207),
           onTap: () {
-            Navigator.pushNamed(context, '/my-interviews');
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => JobSeekerOffersScreen()),
+            );
           },
         ),
         Feature(
-          icon: Icons.mail,
-          title: 'Offers',
-          color: Color(0xFFEF4444),
+          icon: Icons.lightbulb_outline,
+          title: 'Suggested Jobs',
+          color: Color(0xFF10B981),
           onTap: () {
-            Navigator.pushNamed(context, '/my-offers');
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => NotificationsScreen()),
+            );
+          },
+        ),
+        Feature(
+          icon: Icons.message,
+          title: 'My Chats',
+          color: Color.fromARGB(255, 24, 135, 40),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => _MyChatsPage(isRecruiter: false),
+              ),
+            );
           },
         ),
       ]);
@@ -3947,54 +2481,49 @@ class _HomeScreenState extends State<HomeScreen>
       appBar: AppBar(
         title: Text(
           'SmartRecruit',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 25,
+          ),
         ),
         backgroundColor: Theme.of(context).primaryColor,
         elevation: 0,
         actions: [
+          // Changed icon based on user type
           IconButton(
-            icon: Stack(
-              children: [
-                Icon(Icons.notifications_outlined),
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Container(
-                    padding: EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    constraints: BoxConstraints(
-                      minWidth: 14,
-                      minHeight: 14,
-                    ),
-                    child: Text(
-                      '3',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            icon: Icon(isRecruiter ? Icons.analytics_outlined : Icons.person),
             onPressed: () {
-              Navigator.pushNamed(context, '/notifications');
+              if (isRecruiter) {
+                // Navigate to Job Metrics screen
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => JobMetricsScreen(),
+                  ),
+                );
+              } else {
+                // Navigate to Profile screen for job seeker
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => JobseekerProfileForm(),
+                  ),
+                );
+              }
             },
           ),
+          const SizedBox(width: 16),
           IconButton(
-            icon: Icon(Icons.message_outlined),
+            icon: Icon(Icons.settings),
             onPressed: () {
-              Navigator.pushNamed(context, '/messages');
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => SettingsScreen()),
+              );
             },
           ),
         ],
       ),
-      drawer: AppDrawer(),
       body: CustomScrollView(
         slivers: [
           // Welcome Header
@@ -4009,8 +2538,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment
-                    .start, // Adjusted to avoid vertical overflow
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
                     backgroundColor: Colors.white,
@@ -4025,11 +2553,10 @@ class _HomeScreenState extends State<HomeScreen>
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize:
-                          MainAxisSize.min, // Keep column as small as needed
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Welcome, $userName!',
+                          'Welcome $userName',
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
@@ -4077,13 +2604,12 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
 
-          // Primary Features Grid - Fixed grid sizing
           SliverPadding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             sliver: SliverGrid(
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 1.2, // Increased for more height
+                childAspectRatio: 1.2,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
               ),
@@ -4112,22 +2638,6 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
 
-          // Secondary Features Section
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(24, 20, 24, 8),
-              child: Text(
-                'Additional Resources',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF111827),
-                ),
-              ),
-            ),
-          ),
-
-          // Secondary Features List
           SliverPadding(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             sliver: SliverList(
@@ -4185,37 +2695,57 @@ class _HomeScreenState extends State<HomeScreen>
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+            color: const Color.fromARGB(255, 49, 84, 112), width: 0.8),
       ),
       child: InkWell(
         onTap: feature.onTap,
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: EdgeInsets.all(16), // Reduced padding
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color.fromARGB(255, 255, 255, 255),
+                Colors.blue.shade50
+              ],
+            ),
+          ),
+          padding: EdgeInsets.all(16),
           child: Column(
-            mainAxisSize: MainAxisSize.min, // Use minimum space needed
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
                 padding: EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: feature.color.withOpacity(0.1),
+                  color: feature.color.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: feature.color.withOpacity(0.1),
+                      blurRadius: 5,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Icon(
                   feature.icon,
                   color: feature.color,
-                  size: 28, // Slightly reduced
+                  size: 28,
                 ),
               ),
-              SizedBox(height: 12), // Reduced spacing
+              SizedBox(height: 12),
               FittedBox(
-                // Use FittedBox to prevent text overflow
                 fit: BoxFit.scaleDown,
                 child: Text(
                   feature.title,
                   style: TextStyle(
-                    fontSize: 15, // Slightly reduced
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
+                    letterSpacing: 0.3,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -4233,25 +2763,40 @@ class _HomeScreenState extends State<HomeScreen>
       margin: EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+            color: const Color.fromARGB(255, 15, 71, 117), width: 0.5),
       ),
       child: InkWell(
         onTap: feature.onTap,
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-              horizontal: 16, vertical: 12), // Reduced padding
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [Colors.white, Colors.blue.shade50.withOpacity(0.3)],
+            ),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
               Container(
-                padding: EdgeInsets.all(10), // Reduced padding
+                padding: EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: feature.color.withOpacity(0.1),
+                  color: feature.color.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: feature.color.withOpacity(0.08),
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
                 ),
                 child: Icon(
                   feature.icon,
                   color: feature.color,
-                  size: 22, // Reduced size
+                  size: 22,
                 ),
               ),
               SizedBox(width: 16),
@@ -4259,15 +2804,16 @@ class _HomeScreenState extends State<HomeScreen>
                 child: Text(
                   feature.title,
                   style: TextStyle(
-                    fontSize: 15, // Reduced font size
+                    fontSize: 15,
                     fontWeight: FontWeight.w500,
+                    letterSpacing: 0.2,
                   ),
                 ),
               ),
               Icon(
                 Icons.arrow_forward_ios,
-                color: Color(0xFFD1D5DB),
-                size: 14, // Reduced size
+                color: Colors.blue.shade300,
+                size: 14,
               ),
             ],
           ),
@@ -4292,518 +2838,989 @@ class Feature {
   });
 }
 
-// Keeping the App Drawer class unchanged
-class AppDrawer extends StatelessWidget {
+/// Chat badge in AppBar (opens role-aware chat list)
+class _ChatAppBarButton extends StatelessWidget {
+  final bool isRecruiter;
+  const _ChatAppBarButton({Key? key, required this.isRecruiter})
+      : super(key: key);
+
   @override
   Widget build(BuildContext context) {
-    final userProvider = Provider.of<UserProvider>(context);
-    final isRecruiter = userProvider.isRecruiter;
-    final userName = userProvider.userData?['name'] ?? 'User';
-    final userEmail = userProvider.userData?['email'] ?? 'user@example.com';
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return IconButton(
+        icon: const Icon(Icons.chat_bubble_outline),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => _MyChatsPage(isRecruiter: isRecruiter)),
+        ),
+      );
+    }
 
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  backgroundImage: userProvider.userData?['profilePicture'] !=
-                          null
-                      ? NetworkImage(userProvider.userData!['profilePicture'])
-                      : null,
-                  backgroundColor: Colors.white,
-                  radius: 30,
-                  child: userProvider.userData?['profilePicture'] == null
-                      ? Icon(
-                          Icons.person,
-                          size: 32,
-                          color: Theme.of(context).primaryColor,
-                        )
-                      : null,
-                ),
-                SizedBox(height: 12),
-                Text(
-                  userName,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  userEmail,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _buildDrawerItem(
-            context,
-            icon: Icons.home,
-            title: 'Home',
-            onTap: () {
-              Navigator.pop(context);
-            },
-          ),
-          if (isRecruiter) ...[
-            _buildDrawerItem(
-              context,
-              icon: Icons.post_add,
-              title: 'Post New Job',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => DraftJobsScreen()),
-                );
-              },
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.description,
-              title: 'My Job Postings',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/my-jobs');
-              },
-            ),
-            _buildDrawerItem(context,
-                icon: Icons.people, title: 'Candidate Pool', onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
+    final stream = FirebaseFirestore.instance
+        .collection('chats')
+        .where('participants', arrayContains: user.uid)
+        .snapshots();
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: stream,
+      builder: (_, snap) {
+        int unread = 0; // you can implement unread later
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline),
+              onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (context) => CandidateMatchingScreen()),
-              );
-            }),
-            _buildDrawerItem(
-              context,
-              icon: Icons.event,
-              title: 'Interview Management',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/interviews');
-              },
+                    builder: (_) => _MyChatsPage(isRecruiter: isRecruiter)),
+              ),
             ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.question_answer,
-              title: 'Interview Questions',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => AIInterviewQuestionsScreen()),
-                );
-              },
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.mail,
-              title: 'Offer Management',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => OfferLetterAutomationScreen()),
-                );
-              },
-            ),
-          ] else ...[
-            _buildDrawerItem(
-              context,
-              icon: Icons.search,
-              title: 'Find Jobs',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/find-jobs');
-              },
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.person,
-              title: 'My Profile',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => JobseekerProfileForm()),
-                );
-              },
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.upload_file,
-              title: 'Resume Manager',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/resume-manager');
-              },
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.bookmark,
-              title: 'Saved Jobs',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/saved-jobs');
-              },
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.work,
-              title: 'My Applications',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/my-applications');
-              },
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.event,
-              title: 'My Interviews',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/my-interviews');
-              },
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.mail,
-              title: 'My Offers',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/my-offers');
-              },
-            ),
+            if (unread > 0)
+              Positioned(
+                right: 8,
+                top: 10,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$unread',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
           ],
-          _buildDrawerItem(
-            context,
-            icon: Icons.message,
-            title: 'Messages',
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => InAppChatScreen()),
-              );
-            },
-          ),
-          Divider(),
-          _buildDrawerItem(
-            context,
-            icon: Icons.settings,
-            title: 'Settings',
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => SettingsScreen()),
-              );
-            },
-          ),
-          _buildDrawerItem(
-            context,
-            icon: Icons.help_outline,
-            title: 'Help & Support',
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.pushNamed(context, '/help');
-            },
-          ),
-          _buildDrawerItem(
-            context,
-            icon: Icons.logout,
-            title: 'Logout',
-            onTap: () async {
-              Navigator.pop(context);
-              await firebase_auth.FirebaseAuth.instance.signOut();
-              userProvider.signOut();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDrawerItem(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: Theme.of(context).primaryColor,
-      ),
-      title: Text(title),
-      onTap: onTap,
+        );
+      },
     );
   }
 }
 
-// Settings Screen
-class SettingsScreen extends StatefulWidget {
+/// Role-aware My Chats page:
+/// - Recruiter → list candidates who applied to this recruiter's jobs (names auto from users/Users)
+/// - Candidate → list chat threads (other side's real name)
+class _MyChatsPage extends StatelessWidget {
+  final bool isRecruiter;
+  const _MyChatsPage({Key? key, required this.isRecruiter}) : super(key: key);
+
+  /// Resolve a user's display name. Tries users then Users.
+  Future<String> _getUserName(String uid) async {
+    final fs = FirebaseFirestore.instance;
+
+    // try lower-case 'users'
+    final docLower = await fs.collection('users').doc(uid).get();
+    if (docLower.exists) {
+      final name = (docLower.data()?['name'] as String?)?.trim();
+      if (name != null && name.isNotEmpty) return name;
+    }
+
+    // fallback to 'Users'
+    final docUpper = await fs.collection('Users').doc(uid).get();
+    if (docUpper.exists) {
+      final name = (docUpper.data()?['name'] as String?)?.trim();
+      if (name != null && name.isNotEmpty) return name;
+    }
+
+    // last resort: email/displayName
+    final me = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (me != null && me.uid == uid) {
+      return me.displayName ?? me.email ?? 'User';
+    }
+    return 'User';
+  }
+
+  // -------- Recruiter view: candidates who applied to my jobs --------
+  Future<List<String>> _fetchCandidateIdsForRecruiter(String meUid) async {
+    final fs = FirebaseFirestore.instance;
+
+    // 1) jobs posted by this recruiter
+    final jobsSnap = await fs
+        .collection('JobsPosted')
+        .where('recruiterId', isEqualTo: meUid)
+        .get();
+    final jobIds = jobsSnap.docs.map((d) => d.id).toList();
+    if (jobIds.isEmpty) return [];
+
+    // 2) applications for those jobIds
+    // Firestore whereIn supports up to 10 values per query; if >10, chunk it.
+    final candidateIds = <String>{};
+
+    Future<void> readAppsChunk(List<String> chunk) async {
+      final apps = await fs
+          .collection('AppliedCandidates')
+          .where('jobId', whereIn: chunk)
+          .get();
+      for (final a in apps.docs) {
+        final cid = a.data()['candidateId'] as String?;
+        if (cid != null && cid.isNotEmpty) candidateIds.add(cid);
+      }
+    }
+
+    const maxIn = 10;
+    for (var i = 0; i < jobIds.length; i += maxIn) {
+      await readAppsChunk(jobIds.sublist(
+          i, i + maxIn > jobIds.length ? jobIds.length : i + maxIn));
+    }
+
+    return candidateIds.toList();
+  }
+
+  // -------- Candidate view: my chat threads --------
+  Stream<QuerySnapshot<Map<String, dynamic>>> _myThreads(String meUid) {
+    return FirebaseFirestore.instance
+        .collection('chats')
+        .where('participants', arrayContains: meUid)
+        .orderBy('updatedAt', descending: true)
+        .snapshots();
+  }
+
   @override
-  _SettingsScreenState createState() => _SettingsScreenState();
+  Widget build(BuildContext context) {
+    final me = firebase_auth.FirebaseAuth.instance.currentUser!;
+    return Scaffold(
+      appBar: AppBar(title: const Text('My Chats')),
+      body: isRecruiter
+          ? FutureBuilder<List<String>>(
+              future: _fetchCandidateIdsForRecruiter(me.uid),
+              builder: (_, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snap.hasData || snap.data!.isEmpty) {
+                  return const Center(child: Text('No applicants yet'));
+                }
+                final candidates = snap.data!;
+
+                return ListView.separated(
+                  itemCount: candidates.length,
+                  separatorBuilder: (_, __) => const Divider(height: 0),
+                  itemBuilder: (context, i) {
+                    final peerId = candidates[i];
+                    return FutureBuilder<String>(
+                      future: _getUserName(peerId),
+                      builder: (_, nameSnap) {
+                        final name = nameSnap.data ?? 'User';
+                        return ListTile(
+                          leading: CircleAvatar(
+                            child: Text(
+                                name.isNotEmpty ? name[0].toUpperCase() : '?'),
+                          ),
+                          title: Text(name, overflow: TextOverflow.ellipsis),
+                          subtitle: const Text('Tap to chat'),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(
+                                  peerId: peerId,
+                                  peerName: name,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            )
+          : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _myThreads(me.uid),
+              builder: (_, snap) {
+                if (snap.hasError) {
+                  return Center(child: Text('Error: ${snap.error}'));
+                }
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final docs = snap.data!.docs;
+                if (docs.isEmpty) {
+                  return const Center(child: Text('No chats yet'));
+                }
+
+                return ListView.separated(
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 0),
+                  itemBuilder: (context, i) {
+                    final data = docs[i].data();
+
+                    // find the other participant
+                    String peerId = '';
+                    final parts = (data['participants'] as List?) ?? const [];
+                    if (parts.isNotEmpty) {
+                      peerId = (parts.firstWhere((p) => p != me.uid,
+                          orElse: () => '')) as String;
+                    }
+
+                    // try to use userA/userB if present
+                    final a = Map<String, dynamic>.from(data['userA'] ?? {});
+                    final b = Map<String, dynamic>.from(data['userB'] ?? {});
+                    String? nameFromDoc;
+                    if (a.isNotEmpty && b.isNotEmpty) {
+                      nameFromDoc = (a['id'] == me.uid ? b['name'] : a['name'])
+                          as String?;
+                    }
+
+                    return FutureBuilder<String>(
+                      future:
+                          nameFromDoc != null && nameFromDoc.trim().isNotEmpty
+                              ? Future.value(nameFromDoc)
+                              : _getUserName(peerId),
+                      builder: (_, nameSnap) {
+                        final peerName = nameSnap.data ?? 'User';
+                        final last = (data['lastMessage'] as String?) ?? '';
+                        final updated =
+                            (data['updatedAt'] as Timestamp?)?.toDate();
+
+                        return ListTile(
+                          leading: CircleAvatar(
+                            child: Text(peerName.isNotEmpty
+                                ? peerName[0].toUpperCase()
+                                : '?'),
+                          ),
+                          title:
+                              Text(peerName, overflow: TextOverflow.ellipsis),
+                          subtitle: Text(
+                            last,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: updated == null
+                              ? null
+                              : Text(_hhmm(updated),
+                                  style:
+                                      Theme.of(context).textTheme.labelSmall),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(
+                                  peerId: peerId,
+                                  peerName: peerName,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+      // Optional FAB (manual new chat)
+      floatingActionButton: isRecruiter
+          ? null
+          : FloatingActionButton(
+              child: const Icon(Icons.chat),
+              onPressed: () async {
+                // pick any user to start chat (except me) if you want
+                final usersSnap = await FirebaseFirestore.instance
+                    .collection('users')
+                    .where(FieldPath.documentId, isNotEqualTo: me.uid)
+                    .limit(25)
+                    .get();
+
+                final list = usersSnap.docs;
+                if (list.isEmpty) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('No other users found')),
+                    );
+                  }
+                  return;
+                }
+
+                if (!context.mounted) return;
+                showModalBottomSheet(
+                  context: context,
+                  builder: (ctx) => SafeArea(
+                    child: ListView(
+                      children: list.map((d) {
+                        final data = d.data();
+                        final name = (data['name'] as String?) ?? 'User';
+                        return ListTile(
+                          leading:
+                              const CircleAvatar(child: Icon(Icons.person)),
+                          title: Text(name),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(
+                                  peerId: d.id,
+                                  peerName: name,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  String _hhmm(DateTime d) {
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final m = d.minute.toString().padLeft(2, '0');
+    final ap = d.hour < 12 ? 'AM' : 'PM';
+    return '$h:$m $ap';
+  }
+}
+
+// Settings Screen with Logout Feature
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({Key? key}) : super(key: key);
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  @override
-  Widget build(BuildContext context) {
-    final userProvider = Provider.of<UserProvider>(context);
+  final _fs = FirebaseFirestore.instance;
+  final _auth = firebase_auth.FirebaseAuth.instance;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Settings'),
-        elevation: 0,
-      ),
-      body: ListView(
-        children: [
-          _buildSectionHeader('Account'),
-          _buildSettingsItem(
-            context,
-            icon: Icons.person_outline,
-            title: 'Personal Information',
-            subtitle: 'Update your profile details',
-            onTap: () {
-              // Navigate to profile edit
-            },
-          ),
-          _buildSettingsItem(
-            context,
-            icon: Icons.lock_outline,
-            title: 'Password & Security',
-            subtitle: 'Change password and security settings',
-            onTap: () {
-              // Navigate to security settings
-            },
-          ),
-          _buildSettingsItem(
-            context,
-            icon: Icons.privacy_tip_outlined,
-            title: 'Privacy',
-            subtitle: 'Manage your privacy settings',
-            onTap: () {
-              // Navigate to privacy settings
-            },
-          ),
-          _buildSectionHeader('Appearance'),
-          _buildSwitchItem(
-            context,
-            icon: Icons.dark_mode_outlined,
-            title: 'Dark Mode',
-            value: userProvider.isDarkMode,
-            onChanged: (value) {
-              userProvider.toggleDarkMode();
-            },
-          ),
-          _buildSectionHeader('Notifications'),
-          _buildSwitchItem(
-            context,
-            icon: Icons.notifications_none_outlined,
-            title: 'Push Notifications',
-            value: userProvider.enableNotifications,
-            onChanged: (value) {
-              userProvider.toggleNotifications();
-            },
-          ),
-          _buildSettingsItem(
-            context,
-            icon: Icons.email_outlined,
-            title: 'Email Notifications',
-            subtitle: 'Manage email notification preferences',
-            onTap: () {
-              // Navigate to email notification settings
-            },
-          ),
-          _buildSectionHeader('Preferences'),
-          _buildSettingsItem(
-            context,
-            icon: Icons.language_outlined,
-            title: 'Language',
-            subtitle: userProvider.preferredLanguage,
-            onTap: () {
-              _showLanguageDialog(context);
-            },
-          ),
-          _buildSectionHeader('Support'),
-          _buildSettingsItem(
-            context,
-            icon: Icons.help_outline,
-            title: 'Help Center',
-            subtitle: 'Get help with using SmartRecruit',
-            onTap: () {
-              // Navigate to help center
-            },
-          ),
-          _buildSettingsItem(
-            context,
-            icon: Icons.contact_support_outlined,
-            title: 'Contact Us',
-            subtitle: 'Reach out to our support team',
-            onTap: () {
-              // Navigate to contact page
-            },
-          ),
-          _buildSettingsItem(
-            context,
-            icon: Icons.info_outline,
-            title: 'About',
-            subtitle: 'App information and legal details',
-            onTap: () {
-              // Navigate to about page
-            },
-          ),
-          Padding(
-            padding: EdgeInsets.all(24),
-            child: ElevatedButton(
-              onPressed: () async {
-                await firebase_auth.FirebaseAuth.instance.signOut();
-                userProvider.signOut();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFFF3F4F6),
-                foregroundColor: Color(0xFF1F2937),
+  bool _loading = true;
+  String? _error;
+
+  // toggles
+  bool _appNotifications = true;
+  bool _chatEnabled = true;
+
+  // derived
+  String _role = 'recruiter'; // recruiter | jobseeker (default recruiter)
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    try {
+      final me = _auth.currentUser;
+      if (me == null) {
+        setState(() {
+          _error = 'Not logged in';
+          _loading = false;
+        });
+        return;
+      }
+
+      // detect role
+      _role = await _detectRole(me.uid);
+
+      // load UserSettings
+      final doc = await _fs
+          .collection('UserSettings')
+          .doc(me.uid)
+          .get(const GetOptions(source: Source.serverAndCache));
+      final data = doc.data();
+      if (data is Map<String, dynamic>) {
+        _appNotifications = _readBool(data, 'notificationsEnabled', true);
+        _chatEnabled = _readBool(data, 'chatEnabled', true);
+      }
+
+      setState(() => _loading = false);
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load settings: $e';
+        _loading = false;
+      });
+    }
+  }
+
+  // ---------- role detection (fixed & null-safe) ----------
+  Future<String> _detectRole(String uid) async {
+    Future<String?> tryGet(String col) async {
+      try {
+        final snap = await _fs.collection(col).doc(uid).get();
+        final raw = snap.data();
+        if (raw is Map<String, dynamic>) {
+          final v =
+              (raw['userType'] ?? raw['role'] ?? '').toString().toLowerCase();
+          if (v.isNotEmpty) return v; // recruiter | jobseeker
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    final v1 = await tryGet('users');
+    if (v1 != null && v1.isNotEmpty) return v1;
+
+    final v2 = await tryGet('Users');
+    if (v2 != null && v2.isNotEmpty) return v2;
+
+    return 'recruiter';
+  }
+
+  bool _readBool(Map<String, dynamic> m, String k, bool fbVal) {
+    final v = m[k];
+    if (v is bool) return v;
+    if (v is String) return v.toLowerCase() == 'true';
+    if (v is num) return v != 0;
+    return fbVal;
+  }
+
+  Future<void> _saveSettings({bool? notifications, bool? chat}) async {
+    final me = _auth.currentUser;
+    if (me == null) return;
+    try {
+      await _fs.collection('UserSettings').doc(me.uid).set({
+        if (notifications != null) 'notificationsEnabled': notifications,
+        if (chat != null) 'chatEnabled': chat,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save: $e')),
+      );
+    }
+  }
+
+  // ---------- actions ----------
+  Future<void> _toggleNotifications(bool v) async {
+    setState(() => _appNotifications = v);
+    await _saveSettings(notifications: v);
+  }
+
+  Future<void> _toggleChat(bool v) async {
+    setState(() => _chatEnabled = v);
+    await _saveSettings(chat: v);
+  }
+
+  Future<void> _showChangePasswordDialog() async {
+    final user = _auth.currentUser;
+    if (user == null || (user.email ?? '').isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('You must be logged in with email/password.')),
+      );
+      return;
+    }
+
+    final oldCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool saving = false;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setLocal) {
+          return AlertDialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('Change Password'),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: oldCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Current Password',
+                      prefixIcon: Icon(Icons.lock_outline),
+                    ),
+                    validator: (v) => (v == null || v.isEmpty)
+                        ? 'Enter current password'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: newCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'New Password',
+                      prefixIcon: Icon(Icons.lock_reset),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Enter new password';
+                      if (v.length < 6) return 'Use at least 6 characters';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 11),
+                  TextFormField(
+                    controller: confirmCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm Password',
+                      prefixIcon: Icon(Icons.check_circle_outline),
+                    ),
+                    validator: (v) =>
+                        (v != newCtrl.text) ? 'Passwords do not match' : null,
+                  ),
+                ],
               ),
-              child: Text('Sign Out'),
             ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        if (!formKey.currentState!.validate()) return;
+                        setLocal(() => saving = true);
+                        try {
+                          final cred =
+                              firebase_auth.EmailAuthProvider.credential(
+                            email: user.email!,
+                            password: oldCtrl.text,
+                          );
+                          await user.reauthenticateWithCredential(cred);
+                          await user.updatePassword(newCtrl.text);
+                          if (!mounted) return;
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Password changed successfully.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } on firebase_auth.FirebaseAuthException catch (e) {
+                          setLocal(() => saving = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content: Text(
+                                    e.message ?? 'Failed to change password')),
+                          );
+                        } catch (e) {
+                          setLocal(() => saving = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error: $e')),
+                          );
+                        }
+                      },
+                child: saving
+                    ? const SizedBox(
+                        width: 19,
+                        height: 19,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Change Password'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  Future<void> _deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Account?'),
+        content: const Text(
+            'This will permanently delete your account and data. You may need to re-authenticate.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await user.delete();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Account deleted')),
+                );
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                      builder: (_) => AuthWrapper()), // ya AuthWrapper
+                  (route) => false,
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Future<void> _logout() async {
+    try {
+      await _auth.signOut();
+      if (!mounted) return;
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => AuthWrapper()), // ya AuthWrapper
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to logout: $e')),
+      );
+    }
+  }
+
+  void _openGuide() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => GuideScreen(role: _role)),
+    );
+  }
+
+  // ---------- UI ----------
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        elevation: 0,
+        backgroundColor: Colors.blue[800],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : (_error != null)
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                )
+              : ListView(
+                  children: [
+                    _buildSectionTitle(context, 'Account'),
+                    _itemTile(
+                      icon: Icons.password_outlined,
+                      title: 'Change Password',
+                      subtitle: 'Update your account password',
+                      onTap: _showChangePasswordDialog,
+                    ),
+                    _itemTile(
+                      icon: Icons.delete_forever_outlined,
+                      title: 'Delete Account',
+                      subtitle: 'Permanently delete your account',
+                      onTap: _deleteAccount,
+                    ),
+                    _buildSectionTitle(context, 'Preferences'),
+                    _switchTile(
+                      icon: Icons.notifications_active_outlined,
+                      title: 'App Notifications',
+                      value: _appNotifications,
+                      onChanged: _toggleNotifications,
+                    ),
+                    _switchTile(
+                      icon: Icons.forum_outlined,
+                      title: 'In-App Chat',
+                      value: _chatEnabled,
+                      onChanged: _toggleChat,
+                    ),
+                    _buildSectionTitle(context, 'Help'),
+                    _itemTile(
+                      icon: Icons.menu_book_outlined,
+                      title: 'Guide',
+                      subtitle: _role == 'recruiter'
+                          ? 'How recruiters use Smart Recruit'
+                          : 'How jobseekers use Smart Recruit',
+                      onTap: _openGuide,
+                    ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 24),
+                      child: ElevatedButton(
+                        onPressed: _logout,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFEF4444),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.logout, color: Colors.white),
+                            SizedBox(width: 8),
+                            Text(
+                              'Logout',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+    );
+  }
+
+  // ---- small UI helpers ----
+  Widget _buildSectionTitle(BuildContext context, String title) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          color: Color(0xFF1E3A8A),
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-        ),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: TextStyle(
+                color: Colors.blue[800],
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              )),
+          const SizedBox(height: 4),
+          const Divider(thickness: 1),
+        ],
       ),
     );
   }
 
-  Widget _buildSettingsItem(
-    BuildContext context, {
+  Widget _itemTile({
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
   }) {
     return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       leading: Container(
-        padding: EdgeInsets.all(8),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Theme.of(context).primaryColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
+          color: Colors.blue[50],
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(
-          icon,
-          color: Theme.of(context).primaryColor,
-        ),
+        child: Icon(icon, color: Colors.blue[800], size: 24),
       ),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: Icon(Icons.arrow_forward_ios, size: 16),
+      title: Text(title,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+      subtitle: Text(subtitle,
+          style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+      trailing: const Icon(Icons.arrow_forward_ios,
+          size: 16, color: Color(0xFF94A3B8)),
       onTap: onTap,
     );
   }
 
-  Widget _buildSwitchItem(
-    BuildContext context, {
+  Widget _switchTile({
     required IconData icon,
     required String title,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
     return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       leading: Container(
-        padding: EdgeInsets.all(8),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Theme.of(context).primaryColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
+          color: Colors.blue[50],
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(
-          icon,
-          color: Theme.of(context).primaryColor,
-        ),
+        child: Icon(icon, color: Colors.blue[800], size: 24),
       ),
-      title: Text(title),
+      title: Text(title,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
       trailing: Switch(
         value: value,
         onChanged: onChanged,
-        activeColor: Theme.of(context).primaryColor,
+        activeColor: Colors.blue[800],
+      ),
+    );
+  }
+}
+
+/// -------------------------
+/// GUIDE SCREEN (role-aware)
+/// -------------------------
+class GuideScreen extends StatelessWidget {
+  final String role; // recruiter | jobseeker
+  const GuideScreen({Key? key, required this.role}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final isRecruiter = role == 'recruiter';
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F9FC),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            expandedHeight: 180,
+            iconTheme: const IconThemeData(color: Colors.white),
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: FlexibleSpaceBar(
+                titlePadding:
+                    const EdgeInsetsDirectional.only(start: 16, bottom: 16),
+                title: Text(
+                  isRecruiter ? 'Guide · Recruiter' : 'Guide · Jobseeker',
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w700),
+                ),
+                background: Stack(
+                  children: [
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 24.0, bottom: 24),
+                        child: Icon(
+                          isRecruiter
+                              ? Icons.manage_accounts
+                              : Icons.work_outline,
+                          color: Colors.white.withOpacity(.25),
+                          size: 120,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            backgroundColor: const Color(0xFF1E3A8A),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  _guideCard(
+                    title: 'Overview',
+                    icon: Icons.lightbulb_outline,
+                    bullets: isRecruiter
+                        ? const [
+                            'Post jobs and manage pipelines.',
+                            'Auto-generate interview links and send invites.',
+                            'Use In-App Chat to coordinate with candidates.',
+                            'Enable notifications to never miss updates.',
+                          ]
+                        : const [
+                            'Discover jobs and apply in seconds.',
+                            'Track your application status in “My Applications”.',
+                            'Receive interview invites with one-tap join links.',
+                            'Use In-App Chat for quick replies to recruiters.',
+                          ],
+                  ),
+                  const SizedBox(height: 12),
+                  _guideCard(
+                    title: isRecruiter ? 'Scheduling & Invites' : 'Interviews',
+                    icon: Icons.video_call_outlined,
+                    bullets: isRecruiter
+                        ? const [
+                            'Open: Interview Management → Schedule Interview.',
+                            'Pick candidate, date/time, and platform.',
+                            '“Send Invite” pushes details to candidate chat.',
+                            '“Join Interview” opens the meeting link instantly.',
+                          ]
+                        : const [
+                            'You’ll see invites in “My Interviews”.',
+                            'Tap “Join Interview” at the scheduled time.',
+                            'Make sure notifications are ON to get reminders.',
+                          ],
+                  ),
+                  const SizedBox(height: 12),
+                  _guideCard(
+                    title: 'Tips',
+                    icon: Icons.tips_and_updates_outlined,
+                    bullets: isRecruiter
+                        ? const [
+                            'Create structured interview types (HR, Tech, System Design).',
+                            'Keep notes inside the interview details screen.',
+                            'Use status chips (Scheduled → Invited → Confirmed → Completed).',
+                          ]
+                        : const [
+                            'Keep your profile complete for better matching.',
+                            'Be on time; test your mic/camera beforehand.',
+                            'Use chat to ask for reschedule if needed.',
+                          ],
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  void _showLanguageDialog(BuildContext context) {
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final List<String> languages = [
-      'English',
-      'Spanish',
-      'French',
-      'German',
-      'Chinese'
-    ];
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Select Language'),
-          content: Container(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: languages.length,
-              itemBuilder: (context, index) {
-                final language = languages[index];
-                return ListTile(
-                  title: Text(language),
-                  trailing: userProvider.preferredLanguage == language
-                      ? Icon(
-                          Icons.check,
-                          color: Theme.of(context).primaryColor,
-                        )
-                      : null,
-                  onTap: () {
-                    userProvider.setPreferredLanguage(language);
-                    Navigator.pop(context);
-                  },
-                );
-              },
+  Widget _guideCard({
+    required String title,
+    required IconData icon,
+    required List<String> bullets,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(icon, color: const Color(0xFF2563EB)),
+            const SizedBox(width: 8),
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 10),
+          for (final b in bullets)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('•  ', style: TextStyle(fontSize: 16)),
+                  Expanded(
+                      child: Text(b,
+                          style: const TextStyle(color: Colors.black87))),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text('Cancel'),
-            ),
-          ],
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -5010,85 +4027,238 @@ class _LoadingScreenState extends State<LoadingScreen>
   }
 }
 
-class ResumeUploadScreen extends StatelessWidget {
+class ResumeUploadScreen extends StatefulWidget {
   const ResumeUploadScreen({Key? key}) : super(key: key);
 
   @override
+  State<ResumeUploadScreen> createState() => _ResumeUploadScreenState();
+}
+
+class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
+  bool _dontShowAgain = false;
+
+  @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Complete Your Profile'),
+        title: const Text(
+          'Complete Your Profile',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        elevation: 0,
         actions: [
           TextButton(
             onPressed: () =>
                 Navigator.pushReplacementNamed(context, '/HomeScreen'),
-            child: const Text('Skip for now',
-                style: TextStyle(color: Colors.white70)),
+            child: const Text(
+              'Skip for now',
+              style: TextStyle(color: Colors.white70),
+            ),
           ),
         ],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.assignment_ind, size: 80, color: Colors.blue),
-              const SizedBox(height: 24),
-              const Text(
-                'Complete your profile for better job matches',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'A complete profile increases your chances of finding the perfect job by 70%',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 48),
-              ElevatedButton.icon(
-                onPressed: () async {
-                  final result = await FilePicker.platform.pickFiles(
-                    type: FileType.custom,
-                    allowedExtensions: ['pdf', 'doc', 'docx'],
-                  );
-                  if (result != null) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => JobseekerProfileForm(
-                          resumeFile: File(result.files.single.path!),
-                        ),
-                      ),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.upload_file),
-                label: const Text('Upload Resume and Continue'),
-                style: ElevatedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                ),
-              ),
-              const SizedBox(height: 24),
-              OutlinedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const JobseekerProfileForm()),
-                  );
-                },
-                child: const Text('Fill Manually'),
-                style: OutlinedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                ),
-              ),
+      body: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              theme.primaryColor.withOpacity(0.05),
+              Colors.white,
             ],
           ),
         ),
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 40),
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: theme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(100),
+                      ),
+                      child: Icon(
+                        Icons.assignment_ind,
+                        size: 80,
+                        color: theme.primaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      'Complete your profile for better job matches',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'A complete profile increases your chances of finding the perfect job by 70%',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    // Feature list
+                    _buildFeatureItem(
+                      context,
+                      Icons.visibility,
+                      'Enhanced Visibility',
+                      'Be more visible to potential employers',
+                    ),
+                    _buildFeatureItem(
+                      context,
+                      Icons.check_circle_outline,
+                      'Better Matches',
+                      'Receive more relevant job recommendations',
+                    ),
+                    _buildFeatureItem(
+                      context,
+                      Icons.speed,
+                      'Faster Applications',
+                      'Apply with just one click using your profile',
+                    ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ),
+            // Bottom section with checkbox and button
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Don't show again checkbox
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _dontShowAgain,
+                        onChanged: (value) {
+                          setState(() {
+                            _dontShowAgain = value ?? false;
+                            // Update global preference
+                            GlobalPreferences.dontShowResumeUploadScreen =
+                                _dontShowAgain;
+                          });
+                        },
+                        activeColor: theme.primaryColor,
+                      ),
+                      const Text(
+                        "Don't show again",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  // Continue button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const JobseekerProfileForm(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Continue',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem(
+    BuildContext context,
+    IconData icon,
+    String title,
+    String description,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: Theme.of(context).primaryColor,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -5114,64 +4284,17 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
-  final TextEditingController _linkedinController = TextEditingController();
   final TextEditingController _githubController = TextEditingController();
-  final TextEditingController _portfolioController = TextEditingController();
   final TextEditingController _summaryController = TextEditingController();
+  final TextEditingController _technicalSkillController =
+      TextEditingController();
+  final TextEditingController _softSkillController = TextEditingController();
+  final TextEditingController _languageController = TextEditingController();
 
   // Skills and experience
   List<String> _technicalSkills = [];
   List<String> _softSkills = [];
   List<String> _languages = [];
-
-  final List<String> _allTechnicalSkills = [
-    'Flutter',
-    'Firebase',
-    'Dart',
-    'Python',
-    'Java',
-    'React',
-    'JavaScript',
-    'SQL',
-    'Node.js',
-    'AWS',
-    'Swift',
-    'Kotlin',
-    'C#',
-    'HTML/CSS',
-    'PHP',
-    'Go',
-    'Ruby',
-    'TypeScript'
-  ];
-
-  final List<String> _allSoftSkills = [
-    'Communication',
-    'Teamwork',
-    'Problem-solving',
-    'Time management',
-    'Leadership',
-    'Adaptability',
-    'Project management',
-    'Critical thinking',
-    'Conflict resolution',
-    'Emotional intelligence',
-    'Creativity'
-  ];
-
-  final List<String> _allLanguages = [
-    'English',
-    'Spanish',
-    'French',
-    'German',
-    'Chinese',
-    'Japanese',
-    'Russian',
-    'Arabic',
-    'Portuguese',
-    'Hindi',
-    'Italian'
-  ];
 
   // Education, work experience, projects and certificates
   List<Map<String, dynamic>> _educations = [];
@@ -5190,6 +4313,13 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
   int _currentStep = 0;
   late Stream<DocumentSnapshot<Map<String, dynamic>>> _profileStream;
 
+  // Theme colors
+  final Color _primaryColor = const Color(0xFF3366FF);
+  final Color _accentColor = const Color(0xFF00C8FF);
+  final Color _warningColor = const Color(0xFFFFA500);
+  final Color _successColor = const Color(0xFF4CAF50);
+  final Color _dangerColor = const Color(0xFFE53935);
+
   @override
   void initState() {
     super.initState();
@@ -5205,44 +4335,49 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
     _loadProfile();
   }
 
+  @override
+  void dispose() {
+    _technicalSkillController.dispose();
+    _softSkillController.dispose();
+    _languageController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadProfile() async {
     try {
       final uid = _auth.currentUser!.uid;
       final doc =
           await _firestore.collection('JobSeekersProfiles').doc(uid).get();
-
       if (doc.exists) {
         final data = doc.data()!;
-
-        // Basic info
         _nameController.text = data['name'] ?? '';
-        _emailController.text = data['email'] ?? '';
+        _emailController.text = (data['email']?.isNotEmpty ?? false)
+            ? (data['email'] ?? '')
+            : (_auth.currentUser?.email ?? '');
         _phoneController.text = data['phone'] ?? '';
         _locationController.text = data['location'] ?? '';
-        _linkedinController.text = data['linkedin'] ?? '';
         _githubController.text = data['github'] ?? '';
-        _portfolioController.text = data['portfolio'] ?? '';
         _summaryController.text = data['summary'] ?? '';
-
-        // Skills and languages
         _technicalSkills = List<String>.from(data['technicalSkills'] ?? []);
         _softSkills = List<String>.from(data['softSkills'] ?? []);
         _languages = List<String>.from(data['languages'] ?? []);
-
-        // Education, experiences, projects and certificates
         _educations = List<Map<String, dynamic>>.from(data['educations'] ?? []);
         _workExperiences =
             List<Map<String, dynamic>>.from(data['workExperiences'] ?? []);
         _projects = List<Map<String, dynamic>>.from(data['projects'] ?? []);
         _certificates =
             List<Map<String, dynamic>>.from(data['certificates'] ?? []);
-
-        // URLs
         _resumeUrl = data['resumeUrl'];
         _profilePicUrl = data['profilePicUrl'];
+      } else {
+        _emailController.text = _auth.currentUser?.email ?? '';
       }
+      setState(() {});
     } catch (e) {
       debugPrint('Error loading profile: $e');
+      setState(() {
+        _emailController.text = _auth.currentUser?.email ?? '';
+      });
     } finally {
       setState(() => _isLoading = false);
     }
@@ -5299,7 +4434,19 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fix the errors in the form')),
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 12),
+              Text('Please fix the errors in the form'),
+            ],
+          ),
+          backgroundColor: _dangerColor,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
       );
       return;
     }
@@ -5309,27 +4456,37 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
     try {
       final uid = _auth.currentUser!.uid;
 
-      // Upload files if selected
-      if (_resumeFile != null) {
-        _resumeUrl =
-            await _uploadToSupabase(_resumeFile!, 'resumes', _resumeUrl);
+      // Upload files if selected (separate try for files, so skills save even if upload fails)
+      String? newResumeUrl = _resumeUrl;
+      String? newProfilePicUrl = _profilePicUrl;
+
+      try {
+        if (_resumeFile != null) {
+          newResumeUrl =
+              await _uploadToSupabase(_resumeFile!, 'resumes', _resumeUrl);
+        }
+        if (_profilePicFile != null) {
+          newProfilePicUrl = await _uploadToSupabase(
+              _profilePicFile!, 'profile_pics', _profilePicUrl);
+        }
+      } catch (uploadError) {
+        debugPrint('File upload failed but continuing with save: $uploadError');
+        // Don't throw, just log – use old URLs if upload fails
       }
 
-      if (_profilePicFile != null) {
-        _profilePicUrl = await _uploadToSupabase(
-            _profilePicFile!, 'profile_pics', _profilePicUrl);
-      }
+      // Debug print skills before save
+      debugPrint('Saving Profile - Technical Skills: $_technicalSkills');
+      debugPrint('Saving Profile - Soft Skills: $_softSkills');
+      debugPrint('Saving Profile - Languages: $_languages');
 
-      // Save all data to Firestore
+      // Save all data to Firestore (now with updated URLs)
       await _firestore.collection('JobSeekersProfiles').doc(uid).set({
         'userId': uid,
         'name': _nameController.text,
         'email': _emailController.text,
         'phone': _phoneController.text,
         'location': _locationController.text,
-        'linkedin': _linkedinController.text,
         'github': _githubController.text,
-        'portfolio': _portfolioController.text,
         'summary': _summaryController.text,
         'technicalSkills': _technicalSkills,
         'softSkills': _softSkills,
@@ -5338,21 +4495,48 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
         'workExperiences': _workExperiences,
         'projects': _projects,
         'certificates': _certificates,
-        'resumeUrl': _resumeUrl,
-        'profilePicUrl': _profilePicUrl,
+        'resumeUrl': newResumeUrl,
+        'profilePicUrl': newProfilePicUrl,
         'profileCompletionPercentage': _calculateProfileCompletion(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
+      debugPrint('Profile saved successfully to Firestore');
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated successfully!')),
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 12),
+              Text('Profile updated successfully!'),
+            ],
+          ),
+          backgroundColor: _successColor,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
       );
 
       // Navigate to Home screen
       Navigator.pushReplacementNamed(context, '/HomeScreen');
     } catch (e) {
+      debugPrint('Error in _submitForm: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating profile: $e')),
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(child: Text('Error updating profile: $e')),
+            ],
+          ),
+          backgroundColor: _dangerColor,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
       );
     } finally {
       setState(() => _isSaving = false);
@@ -5415,6 +4599,36 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
         },
       ),
     );
+  }
+
+  void _addTechnicalSkill(String skill) {
+    if (skill.trim().isNotEmpty && !_technicalSkills.contains(skill.trim())) {
+      setState(() => _technicalSkills.add(skill.trim()));
+    }
+  }
+
+  void _addSoftSkill(String skill) {
+    if (skill.trim().isNotEmpty && !_softSkills.contains(skill.trim())) {
+      setState(() => _softSkills.add(skill.trim()));
+    }
+  }
+
+  void _addLanguage(String language) {
+    if (language.trim().isNotEmpty && !_languages.contains(language.trim())) {
+      setState(() => _languages.add(language.trim()));
+    }
+  }
+
+  void _removeTechnicalSkill(String skill) {
+    setState(() => _technicalSkills.remove(skill));
+  }
+
+  void _removeSoftSkill(String skill) {
+    setState(() => _softSkills.remove(skill));
+  }
+
+  void _removeLanguage(String language) {
+    setState(() => _languages.remove(language));
   }
 
   void _addWorkExperience() {
@@ -5492,9 +4706,66 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
     );
   }
 
+  // Custom text field with consistent styling
+  Widget _buildStyledTextField({
+    required TextEditingController controller,
+    required String label,
+    IconData? prefixIcon,
+    String? hintText,
+    bool isRequired = false,
+    bool readOnly = false,
+    int maxLines = 1,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: TextFormField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: isRequired ? '$label *' : label,
+          hintText: hintText,
+          prefixIcon: prefixIcon != null
+              ? Icon(prefixIcon, color: _primaryColor)
+              : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: _primaryColor, width: 2),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: _dangerColor),
+          ),
+          filled: true,
+          fillColor: readOnly ? Colors.grey.shade100 : Colors.white,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        ),
+        style: TextStyle(fontSize: 15),
+        readOnly: readOnly,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        validator: validator ??
+            (isRequired
+                ? (value) => value == null || value.isEmpty
+                    ? 'This field is required'
+                    : null
+                : null),
+      ),
+    );
+  }
+
   Widget _buildBasicInfoStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(0.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5503,95 +4774,163 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
               onTap: _pickProfilePic,
               child: Stack(
                 children: [
-                  CircleAvatar(
-                    radius: 60,
-                    backgroundColor: Colors.grey[200],
-                    backgroundImage: _profilePicFile != null
-                        ? FileImage(_profilePicFile!) as ImageProvider
-                        : _profilePicUrl != null
-                            ? NetworkImage(_profilePicUrl!) as ImageProvider
-                            : null,
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: Offset(0, 5),
+                        ),
+                      ],
+                      image: _profilePicFile != null
+                          ? DecorationImage(
+                              image: FileImage(_profilePicFile!),
+                              fit: BoxFit.cover,
+                            )
+                          : _profilePicUrl != null
+                              ? DecorationImage(
+                                  image: NetworkImage(_profilePicUrl!),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                    ),
                     child: (_profilePicFile == null && _profilePicUrl == null)
-                        ? const Icon(Icons.person, size: 60, color: Colors.grey)
+                        ? Icon(Icons.person,
+                            size: 60, color: Colors.grey.shade400)
                         : null,
                   ),
                   Positioned(
                     right: 0,
                     bottom: 0,
-                    child: CircleAvatar(
-                      radius: 20,
-                      backgroundColor: Theme.of(context).primaryColor,
+                    child: Container(
+                      height: 40,
+                      width: 40,
+                      decoration: BoxDecoration(
+                        color: _primaryColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 5,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
                       child: const Icon(Icons.camera_alt,
-                          color: Colors.white, size: 18),
+                          color: Colors.white, size: 20),
                     ),
                   ),
                 ],
               ),
             ),
           ),
+          const SizedBox(height: 30),
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 10,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Personal Information',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
+                ),
+                Divider(height: 30, thickness: 1),
+                _buildStyledTextField(
+                  controller: _nameController,
+                  label: 'Full Name',
+                  prefixIcon: Icons.person_outline,
+                  isRequired: true,
+                  validator: (value) =>
+                      value!.isEmpty ? 'Name is required' : null,
+                ),
+                _buildStyledTextField(
+                  controller: _emailController,
+                  label: 'Email',
+                  prefixIcon: Icons.email_outlined,
+                  isRequired: true,
+                  readOnly: true,
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                _buildStyledTextField(
+                  controller: _phoneController,
+                  label: 'Phone Number',
+                  prefixIcon: Icons.phone_outlined,
+                  isRequired: true,
+                  keyboardType: TextInputType.phone,
+                  validator: (value) {
+                    if (value == null || value.isEmpty)
+                      return 'Phone number is required';
+                    return value.length >= 10
+                        ? null
+                        : 'Enter a valid phone number';
+                  },
+                ),
+                _buildStyledTextField(
+                  controller: _locationController,
+                  label: 'Location',
+                  prefixIcon: Icons.location_on_outlined,
+                  hintText: 'City, Country',
+                  isRequired: true,
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 24),
-          TextFormField(
-            controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: 'Full Name *',
-              prefixIcon: Icon(Icons.person),
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 10,
+                  offset: Offset(0, 1),
+                ),
+              ],
             ),
-            validator: (value) => value!.isEmpty ? 'Required' : null,
-          ),
-          TextFormField(
-            controller: _emailController,
-            decoration: const InputDecoration(
-              labelText: 'Email *',
-              prefixIcon: Icon(Icons.email),
-            ),
-            keyboardType: TextInputType.emailAddress,
-            readOnly: true, // Email is already set and readonly
-          ),
-          TextFormField(
-            controller: _phoneController,
-            decoration: const InputDecoration(
-              labelText: 'Phone Number *',
-              prefixIcon: Icon(Icons.phone),
-            ),
-            keyboardType: TextInputType.phone,
-            validator: (value) {
-              if (value == null || value.isEmpty) return 'Required';
-              return value.length >= 10 ? null : 'Enter a valid phone number';
-            },
-          ),
-          TextFormField(
-            controller: _locationController,
-            decoration: const InputDecoration(
-              labelText: 'Location *',
-              prefixIcon: Icon(Icons.location_on),
-              hintText: 'City, State, Country',
-            ),
-            validator: (value) => value!.isEmpty ? 'Required' : null,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Social Media & Online Presence',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          TextFormField(
-            controller: _linkedinController,
-            decoration: const InputDecoration(
-              labelText: 'LinkedIn Profile',
-              prefixIcon: Icon(Icons.link),
-            ),
-          ),
-          TextFormField(
-            controller: _githubController,
-            decoration: const InputDecoration(
-              labelText: 'GitHub Profile',
-              prefixIcon: Icon(Icons.code),
-            ),
-          ),
-          TextFormField(
-            controller: _portfolioController,
-            decoration: const InputDecoration(
-              labelText: 'Portfolio Website',
-              prefixIcon: Icon(Icons.web),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Social Media & Online Presence',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
+                ),
+                Divider(height: 30, thickness: 1),
+                _buildStyledTextField(
+                  controller: _githubController,
+                  label: 'GitHub Profile',
+                  prefixIcon: Icons.code,
+                  keyboardType: TextInputType.url,
+                ),
+              ],
             ),
           ),
         ],
@@ -5601,74 +4940,198 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
 
   Widget _buildResumeAndSummaryStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(0.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Professional Summary',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: _summaryController,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 10,
+                  offset: Offset(0, 1),
+                ),
+              ],
             ),
-            maxLines: 5,
-            validator: (value) =>
-                value!.isEmpty ? 'Please add a professional summary' : null,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Professional Summary',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Provide a brief overview of your professional background and key strengths.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildStyledTextField(
+                  controller: _summaryController,
+                  label: 'Summary',
+                  isRequired: true,
+                  maxLines: 5,
+                  hintText:
+                      'Share your professional story and highlight your key qualifications and career goals.',
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            'Resume/CV',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton.icon(
-            onPressed: _pickResume,
-            icon: const Icon(Icons.upload_file),
-            label: Text(_resumeFile != null || _resumeUrl != null
-                ? 'Change Resume'
-                : 'Upload Resume'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 10,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Resume/CV',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Upload your resume to help employers find you faster.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (_resumeFile != null || _resumeUrl != null)
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _primaryColor.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: _primaryColor.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.description, color: _primaryColor),
+                        ),
+                        SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _resumeFile != null
+                                    ? p.basename(_resumeFile!.path)
+                                    : 'Resume uploaded',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(
+                                _resumeFile != null
+                                    ? 'New file to upload'
+                                    : 'Click to preview',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.remove_circle_outline,
+                              color: _dangerColor),
+                          onPressed: () => setState(() => _resumeFile != null
+                              ? _resumeFile = null
+                              : _resumeUrl = null),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(vertical: 30),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 1,
+                          style: BorderStyle.solid),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.upload_file,
+                            size: 48, color: Colors.grey.shade500),
+                        SizedBox(height: 16),
+                        Text(
+                          'Drag and drop your resume here',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        SizedBox(height: 8),
+                        Text('or',
+                            style: TextStyle(color: Colors.grey.shade500)),
+                        SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _pickResume,
+                          icon: Icon(Icons.file_upload),
+                          label: Text('Browse Files'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Supported formats: PDF, DOC, DOCX',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          if (_resumeFile != null)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.description),
-                title: Text(p.basename(_resumeFile!.path)),
-                subtitle: const Text('New file to upload'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.remove_circle_outline,
-                      color: Colors.red),
-                  onPressed: () => setState(() => _resumeFile = null),
-                ),
-              ),
-            )
-          else if (_resumeUrl != null)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.description),
-                title: const Text('Resume uploaded'),
-                subtitle: const Text('Click to preview'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.remove_circle_outline,
-                      color: Colors.red),
-                  onPressed: () => setState(() => _resumeUrl = null),
-                ),
-                onTap: () async {
-                  // Implement preview functionality here
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Resume preview not implemented')),
-                  );
-                },
-              ),
-            ),
         ],
       ),
     );
@@ -5676,86 +5139,284 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
 
   Widget _buildSkillsStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(0.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Technical Skills',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 10,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Technical Skills',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Enter your technical skills (e.g., Flutter, Python).',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Existing skills as removable chips
+                if (_technicalSkills.isNotEmpty)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _technicalSkills
+                        .map((skill) => InputChip(
+                              label: Text(skill),
+                              onDeleted: () => _removeTechnicalSkill(skill),
+                              backgroundColor: _primaryColor.withOpacity(0.1),
+                              deleteIconColor: _dangerColor,
+                            ))
+                        .toList(),
+                  ),
+                // Add new skill field
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _technicalSkillController,
+                        onSubmitted: _addTechnicalSkill,
+                        decoration: InputDecoration(
+                          hintText: 'Enter a technical skill...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                BorderSide(color: _primaryColor, width: 2),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        _addTechnicalSkill(_technicalSkillController.text);
+                        _technicalSkillController.clear();
+                      },
+                      child: const Icon(Icons.add),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: const CircleBorder(),
+                        padding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _allTechnicalSkills.map((skill) {
-              final isSelected = _technicalSkills.contains(skill);
-              return FilterChip(
-                label: Text(skill),
-                selected: isSelected,
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _technicalSkills.add(skill);
-                    } else {
-                      _technicalSkills.remove(skill);
-                    }
-                  });
-                },
-              );
-            }).toList(),
+          const SizedBox(height: 24),
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 10,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Soft Skills',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Enter your soft skills (e.g., Communication, Leadership).',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Existing skills as removable chips
+                if (_softSkills.isNotEmpty)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _softSkills
+                        .map((skill) => InputChip(
+                              label: Text(skill),
+                              onDeleted: () => _removeSoftSkill(skill),
+                              backgroundColor: _accentColor.withOpacity(0.1),
+                              deleteIconColor: _dangerColor,
+                            ))
+                        .toList(),
+                  ),
+                // Add new skill field
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _softSkillController,
+                        onSubmitted: _addSoftSkill,
+                        decoration: InputDecoration(
+                          hintText: 'Enter a soft skill...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                BorderSide(color: _accentColor, width: 2),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        _addSoftSkill(_softSkillController.text);
+                        _softSkillController.clear();
+                      },
+                      child: const Icon(Icons.add),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _accentColor,
+                        foregroundColor: Colors.white,
+                        shape: const CircleBorder(),
+                        padding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Soft Skills',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _allSoftSkills.map((skill) {
-              final isSelected = _softSkills.contains(skill);
-              return FilterChip(
-                label: Text(skill),
-                selected: isSelected,
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _softSkills.add(skill);
-                    } else {
-                      _softSkills.remove(skill);
-                    }
-                  });
-                },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Languages',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _allLanguages.map((language) {
-              final isSelected = _languages.contains(language);
-              return FilterChip(
-                label: Text(language),
-                selected: isSelected,
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _languages.add(language);
-                    } else {
-                      _languages.remove(language);
-                    }
-                  });
-                },
-              );
-            }).toList(),
+          const SizedBox(height: 24),
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 10,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Languages',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Enter languages you speak (e.g., English, Spanish).',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Existing languages as removable chips
+                if (_languages.isNotEmpty)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _languages
+                        .map((language) => InputChip(
+                              label: Text(language),
+                              onDeleted: () => _removeLanguage(language),
+                              backgroundColor: _primaryColor.withOpacity(0.1),
+                              deleteIconColor: _dangerColor,
+                            ))
+                        .toList(),
+                  ),
+                // Add new language field
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _languageController,
+                        onSubmitted: _addLanguage,
+                        decoration: InputDecoration(
+                          hintText: 'Enter a language...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                BorderSide(color: _primaryColor, width: 2),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        _addLanguage(_languageController.text);
+                        _languageController.clear();
+                      },
+                      child: const Icon(Icons.add),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: const CircleBorder(),
+                        padding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -5764,337 +5425,900 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
 
   Widget _buildEducationStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Education',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-              ElevatedButton.icon(
-                onPressed: _addEducation,
-                icon: const Icon(Icons.add),
-                label: const Text('Add'),
-                style: ElevatedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(0.0),
+      child: Container(
+        padding: EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 10,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Education',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _educations.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: Text(
-                      'No education added yet. Tap "Add" to include your educational background.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
+                const SizedBox(
+                    height: 10), // Add spacing between title and button
+                ElevatedButton.icon(
+                  onPressed: _addEducation,
+                  icon: Icon(Icons.add),
+                  label: Text('Add'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _educations.length,
-                  itemBuilder: (context, index) {
-                    final education = _educations[index];
-                    return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        title: Text(education['school'] ?? ''),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(education['degree'] ?? ''),
-                            Text(
-                                '${education['startDate']} - ${education['endDate']}'),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _editEducation(index),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                setState(() {
-                                  _educations.removeAt(index);
-                                });
-                              },
-                            ),
-                          ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Add your educational background and qualifications.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _educations.isEmpty
+                ? Center(
+                    child: Container(
+                      padding: EdgeInsets.all(30),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 1,
+                          style: BorderStyle.solid,
                         ),
                       ),
-                    );
-                  },
-                ),
-        ],
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.school_outlined,
+                            size: 48,
+                            color: Colors.grey.shade400,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No education added yet',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Tap "Add Education" to include your educational background.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _educations.length,
+                    itemBuilder: (context, index) {
+                      final education = _educations[index];
+                      return Card(
+                        elevation: 2,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: _primaryColor.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(Icons.school,
+                                        color: _primaryColor),
+                                  ),
+                                  SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          education['school'] ?? '',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          education['degree'] ?? '',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${education['startDate']} - ${education['endDate']}',
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        if (education['description']
+                                                ?.isNotEmpty ??
+                                            false)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 8.0),
+                                            child: Text(
+                                              education['description'],
+                                              style: TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Divider(height: 32),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () => _editEducation(index),
+                                    icon: Icon(Icons.edit, size: 18),
+                                    label: Text('Edit'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: _primaryColor,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _educations.removeAt(index);
+                                      });
+                                    },
+                                    icon: Icon(Icons.delete, size: 18),
+                                    label: Text('Delete'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: _dangerColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildWorkExperienceStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Work Experience',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-              ElevatedButton.icon(
-                onPressed: _addWorkExperience,
-                icon: const Icon(Icons.add),
-                label: const Text('Add'),
-                style: ElevatedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(0.0),
+      child: Container(
+        padding: EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 10,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Work Experience',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _workExperiences.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: Text(
-                      'No work experience added yet. Tap "Add" to include your professional experience.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  onPressed: _addWorkExperience,
+                  icon: Icon(Icons.add),
+                  label: Text('Add'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _workExperiences.length,
-                  itemBuilder: (context, index) {
-                    final experience = _workExperiences[index];
-                    return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        title: Text(experience['title'] ?? ''),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(experience['company'] ?? ''),
-                            Text(
-                                '${experience['startDate']} - ${experience['endDate']}'),
-                            if (experience['description']?.isNotEmpty ?? false)
-                              Text(
-                                experience['description'],
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _editWorkExperience(index),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                setState(() {
-                                  _workExperiences.removeAt(index);
-                                });
-                              },
-                            ),
-                          ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Add your professional experience and work history.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _workExperiences.isEmpty
+                ? Center(
+                    child: Container(
+                      padding: EdgeInsets.all(30),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 1,
+                          style: BorderStyle.solid,
                         ),
                       ),
-                    );
-                  },
-                ),
-        ],
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.business_center_outlined,
+                            size: 48,
+                            color: Colors.grey.shade400,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No work experience added yet',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Tap "Add Experience" to include your professional experience.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _workExperiences.length,
+                    itemBuilder: (context, index) {
+                      final experience = _workExperiences[index];
+                      return Card(
+                        elevation: 2,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: _accentColor.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child:
+                                        Icon(Icons.work, color: _accentColor),
+                                  ),
+                                  SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          experience['title'] ?? '',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          experience['company'] ?? '',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${experience['startDate']} - ${experience['endDate']}',
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        if (experience['description']
+                                                ?.isNotEmpty ??
+                                            false)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 8.0),
+                                            child: Text(
+                                              experience['description'],
+                                              style: TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Divider(height: 32),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () => _editWorkExperience(index),
+                                    icon: Icon(Icons.edit, size: 18),
+                                    label: Text('Edit'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: _primaryColor,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _workExperiences.removeAt(index);
+                                      });
+                                    },
+                                    icon: Icon(Icons.delete, size: 18),
+                                    label: Text('Delete'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: _dangerColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildProjectsStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Projects',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-              ElevatedButton.icon(
-                onPressed: _addProject,
-                icon: const Icon(Icons.add),
-                label: const Text('Add'),
-                style: ElevatedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(0.0),
+      child: Container(
+        padding: EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 10,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Projects',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _projects.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: Text(
-                      'No projects added yet. Tap "Add" to showcase your work and achievements.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  onPressed: _addProject,
+                  icon: Icon(Icons.add),
+                  label: Text('Add'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _projects.length,
-                  itemBuilder: (context, index) {
-                    final project = _projects[index];
-                    return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        title: Text(project['title'] ?? ''),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(project['date'] ?? ''),
-                            if (project['link']?.isNotEmpty ?? false)
-                              Text('Link: ${project['link']}'),
-                            if (project['description']?.isNotEmpty ?? false)
-                              Text(
-                                project['description'],
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _editProject(index),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                setState(() {
-                                  _projects.removeAt(index);
-                                });
-                              },
-                            ),
-                          ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Showcase your personal and professional projects.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _projects.isEmpty
+                ? Center(
+                    child: Container(
+                      padding: EdgeInsets.all(30),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 1,
+                          style: BorderStyle.solid,
                         ),
                       ),
-                    );
-                  },
-                ),
-        ],
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.code_outlined,
+                            size: 48,
+                            color: Colors.grey.shade400,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No projects added yet',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Tap "Add Project" to showcase your work and achievements.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _projects.length,
+                    itemBuilder: (context, index) {
+                      final project = _projects[index];
+                      return Card(
+                        elevation: 2,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: _primaryColor.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(Icons.lightbulb,
+                                        color: _primaryColor),
+                                  ),
+                                  SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          project['title'] ?? '',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          project['date'] ?? '',
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        if (project['link']?.isNotEmpty ??
+                                            false)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 4.0),
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.link,
+                                                    size: 16,
+                                                    color: _accentColor),
+                                                SizedBox(width: 6),
+                                                Expanded(
+                                                  child: Text(
+                                                    project['link'],
+                                                    style: TextStyle(
+                                                      color: _accentColor,
+                                                      fontSize: 14,
+                                                    ),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        if (project['description']
+                                                ?.isNotEmpty ??
+                                            false)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 8.0),
+                                            child: Text(
+                                              project['description'],
+                                              style: TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Divider(height: 32),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () => _editProject(index),
+                                    icon: Icon(Icons.edit, size: 18),
+                                    label: Text('Edit'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: _primaryColor,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _projects.removeAt(index);
+                                      });
+                                    },
+                                    icon: Icon(Icons.delete, size: 18),
+                                    label: Text('Delete'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: _dangerColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildCertificatesStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Certificates & Achievements',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
-              ElevatedButton.icon(
-                onPressed: _addCertificate,
-                icon: const Icon(Icons.add),
-                label: const Text('Add'),
-                style: ElevatedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(0.0),
+      child: Container(
+        padding: EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 10,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Certificates',
+                  style: TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: _primaryColor,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _certificates.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: Text(
-                      'No certificates added yet. Tap "Add" to include your certifications and achievements.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
+                ElevatedButton.icon(
+                  onPressed: _addCertificate,
+                  icon: Icon(Icons.add),
+                  label: Text('Add'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                )
-              : ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _certificates.length,
-                  itemBuilder: (context, index) {
-                    final certificate = _certificates[index];
-                    return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        title: Text(certificate['name'] ?? ''),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(certificate['issuer'] ?? ''),
-                            Text('Issued: ${certificate['date']}'),
-                            if (certificate['link']?.isNotEmpty ?? false)
-                              Text('Link: ${certificate['link']}'),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _editCertificate(index),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () {
-                                setState(() {
-                                  _certificates.removeAt(index);
-                                });
-                              },
-                            ),
-                          ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Showcase your certifications and achievements.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _certificates.isEmpty
+                ? Center(
+                    child: Container(
+                      padding: EdgeInsets.all(30),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 1,
+                          style: BorderStyle.solid,
                         ),
                       ),
-                    );
-                  },
-                ),
-        ],
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.emoji_events_outlined,
+                            size: 48,
+                            color: Colors.grey.shade400,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No certificates added yet',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Tap "Add" to include your certifications and achievements.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _certificates.length,
+                    itemBuilder: (context, index) {
+                      final certificate = _certificates[index];
+                      return Card(
+                        elevation: 2,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: _primaryColor.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(Icons.verified,
+                                        color: _primaryColor),
+                                  ),
+                                  SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          certificate['name'] ?? '',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          certificate['issuer'] ?? '',
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 4.0),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.calendar_today,
+                                                  size: 16,
+                                                  color: Colors.grey.shade600),
+                                              SizedBox(width: 6),
+                                              Text(
+                                                'Issued: ${certificate['date']}',
+                                                style: TextStyle(
+                                                    fontSize: 14,
+                                                    color:
+                                                        Colors.grey.shade600),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (certificate['credentialId']
+                                                ?.isNotEmpty ??
+                                            false)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 4.0),
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.badge,
+                                                    size: 16,
+                                                    color:
+                                                        Colors.grey.shade600),
+                                                SizedBox(width: 6),
+                                                Text(
+                                                  'ID: ${certificate['credentialId']}',
+                                                  style: TextStyle(
+                                                      fontSize: 14,
+                                                      color:
+                                                          Colors.grey.shade600),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        if (certificate['link']?.isNotEmpty ??
+                                            false)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 4.0),
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.link,
+                                                    size: 16,
+                                                    color: _accentColor),
+                                                SizedBox(width: 6),
+                                                Expanded(
+                                                  child: Text(
+                                                    certificate['link'],
+                                                    style: TextStyle(
+                                                      color: _accentColor,
+                                                      fontSize: 14,
+                                                    ),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        if (certificate['description']
+                                                ?.isNotEmpty ??
+                                            false)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 8.0),
+                                            child: Text(
+                                              certificate['description'],
+                                              style: TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Divider(height: 32),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () => _editCertificate(index),
+                                    icon: Icon(Icons.edit, size: 18),
+                                    label: Text('Edit'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: _primaryColor,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _certificates.removeAt(index);
+                                      });
+                                    },
+                                    icon: Icon(Icons.delete, size: 18),
+                                    label: Text('Delete'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: _dangerColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ],
+        ),
       ),
     );
   }
@@ -6108,7 +6332,7 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
             : Colors.green;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(0.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -6322,14 +6546,6 @@ class _JobseekerProfileFormState extends State<JobseekerProfileForm> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Complete Your Profile'),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.pushReplacementNamed(context, '/HomeScreen'),
-            child: const Text('Skip for now',
-                style: TextStyle(color: Colors.white70)),
-          ),
-        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -6611,7 +6827,6 @@ class _WorkExperienceDialogState extends State<_WorkExperienceDialog> {
                 controller: _descriptionController,
                 decoration: const InputDecoration(
                   labelText: 'Description',
-                  hintText: 'Responsibilities, achievements, etc.',
                 ),
                 maxLines: 5,
               ),
@@ -6705,7 +6920,6 @@ class _ProjectDialogState extends State<_ProjectDialog> {
                 controller: _linkController,
                 decoration: const InputDecoration(
                   labelText: 'Project Link',
-                  hintText: 'GitHub, live demo, etc.',
                 ),
               ),
               TextFormField(
@@ -6821,7 +7035,6 @@ class _CertificateDialogState extends State<_CertificateDialog> {
                 controller: _linkController,
                 decoration: const InputDecoration(
                   labelText: 'Certificate URL',
-                  hintText: 'Verification link',
                 ),
               ),
             ],

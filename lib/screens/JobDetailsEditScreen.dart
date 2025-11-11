@@ -80,7 +80,6 @@ final appTheme = ThemeData(
     error: Color(0xFFEF4444),
     onPrimary: Colors.white,
     onSecondary: Colors.white,
-    // Adding additional vibrant colors for more appeal
     tertiary: Color(0xFF6366F1), // Indigo
     tertiaryContainer: Color(0xFFEEF2FF), // Light indigo
     secondaryContainer: Color(0xFFDCFCE7), // Light teal
@@ -198,11 +197,21 @@ class _JobDetailsEditScreenState extends State<JobDetailsEditScreen> {
         Map<String, dynamic> jobData = jobDoc.data() as Map<String, dynamic>;
         print("Job Data Retrieved: $jobData");
 
-        // Handle description data correctly
+        // Handle description data for both formats
         Map<String, dynamic> descriptionData = {};
         if (jobData['description'] is String) {
-          descriptionData = jsonDecode(jobData['description']);
+          try {
+            final decoded = jsonDecode(jobData['description']);
+            if (decoded is Map<String, dynamic>) {
+              // Second format: description contains nested description
+              descriptionData = decoded['description'] ?? decoded;
+            }
+          } catch (e) {
+            print("Error decoding JSON description: $e");
+            descriptionData = {};
+          }
         } else if (jobData['description'] is Map<String, dynamic>) {
+          // First format: description is already a map
           descriptionData = jobData['description'];
         }
 
@@ -371,7 +380,6 @@ class _JobDetailsEditScreenState extends State<JobDetailsEditScreen> {
       // Parse technical skills properly
       Map<String, dynamic> technicalSkillsMap = {};
       try {
-        // Parse technical skills from the text field
         String technicalSkillsText =
             controllers['technical_skills']!.text.trim();
         if (technicalSkillsText.isNotEmpty) {
@@ -391,9 +399,9 @@ class _JobDetailsEditScreenState extends State<JobDetailsEditScreen> {
         }
       } catch (e) {
         print("Error parsing technical skills: $e");
-        // If parsing fails, try to use existing data
-        technicalSkillsMap =
-            jobDetails['description']?['technical_skills'] ?? {};
+        technicalSkillsMap = jobDetails['description'] is Map<String, dynamic>
+            ? jobDetails['description']['technical_skills'] ?? {}
+            : {};
       }
 
       // Prepare the updated description map
@@ -426,6 +434,16 @@ class _JobDetailsEditScreenState extends State<JobDetailsEditScreen> {
             .toList(),
       };
 
+      // Determine the description format based on original job data
+      dynamic descriptionToSave = updatedDescription;
+      if (jobDetails['description'] is String) {
+        // Second format: save as JSON string with nested structure
+        descriptionToSave = jsonEncode({
+          'job_title': controllers['title']!.text.trim(),
+          'description': updatedDescription,
+        });
+      }
+
       // Update the job document in the JobsInDraft collection
       await FirebaseFirestore.instance
           .collection('JobsInDraft')
@@ -435,7 +453,7 @@ class _JobDetailsEditScreenState extends State<JobDetailsEditScreen> {
         'company_name': controllers['company_name']!.text.trim(),
         'location': controllers['location']!.text.trim(),
         'job_type': controllers['job_type']!.text.trim(),
-        'description': updatedDescription,
+        'description': descriptionToSave,
         'last_date_to_apply': controllers['last_date_to_apply']!.text.isNotEmpty
             ? Timestamp.fromDate(DateFormat('dd/MM/yyyy')
                 .parse(controllers['last_date_to_apply']!.text))

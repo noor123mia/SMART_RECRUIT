@@ -1,21 +1,23 @@
+// Updated MatchingService.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // For Timestamp handling
 
 class MatchingService {
   final String apiUrl;
 
-  MatchingService({this.apiUrl = "http://192.168.10.7:7860"});
+  MatchingService({this.apiUrl = "http://192.168.10.8:7860"});
 
   Future<Map<String, dynamic>> matchCandidate(
       Map<String, dynamic> job, Map<String, dynamic> candidate) async {
     try {
       if (kDebugMode) {
         print('--- Match Candidate Called ---');
-        print('Job ID: ${job['id']}');
+        print('Job ID: ${job['id']}'); 
         print('Candidate Name: ${candidate['name']}');
       }
-
+ 
       final sanitizedJob = _sanitizeDataForApi(job);
       final sanitizedCandidate = _sanitizeDataForApi(candidate);
 
@@ -30,6 +32,7 @@ class MatchingService {
 
       if (kDebugMode) {
         print('API Response Status: ${response.statusCode}');
+        print('Raw Response Body: ${response.body}');
       }
 
       if (response.statusCode == 200) {
@@ -59,13 +62,20 @@ class MatchingService {
       final sanitizedCandidates =
           candidates.map((c) => _sanitizeDataForApi(c)).toList();
 
+      final payload = {
+        "job": sanitizedJob,
+        "candidates": sanitizedCandidates,
+      };
+
+      if (kDebugMode) {
+        print('Final Payload sent to API:');
+        print(jsonEncode(payload));
+      }
+
       final response = await http.post(
         Uri.parse('$apiUrl/batch-match/'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'job': sanitizedJob,
-          'candidates': sanitizedCandidates,
-        }),
+        body: jsonEncode(payload),
       );
 
       if (kDebugMode) {
@@ -78,13 +88,14 @@ class MatchingService {
         if (data.containsKey('matches') && data['matches'] is List) {
           return {
             'matches': List<Map<String, dynamic>>.from(data['matches']),
-            'rawResponse': response.body, // Include raw response body
+            'rawResponse': response.body,
           };
         } else {
           throw Exception('Invalid response format from batch API');
         }
       } else {
-        throw Exception('Batch API Error: ${response.statusCode}');
+        throw Exception(
+            'Batch API Error: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -102,17 +113,40 @@ class MatchingService {
       }
       return {
         'matches': results,
-        'rawResponse': '', // Empty raw response for fallback
+        'rawResponse': '',
       };
     }
   }
 
+  // Updated: Recursively sanitize data and convert Timestamps to ISO strings
   Map<String, dynamic> _sanitizeDataForApi(Map<String, dynamic> data) {
-    final result = Map<String, dynamic>.from(data);
-    result.remove('reference');
-    result.remove('createdAt');
-    result.remove('updatedAt');
+    final result = <String, dynamic>{};
+    data.forEach((key, value) {
+      if (key == 'reference' || key == 'createdAt' || key == 'updatedAt') {
+        return; // Skip these fields
+      }
+      result[key] = _convertToEncodable(value);
+    });
     return result;
+  }
+
+  // Helper: Recursively convert Timestamps and nested structures to JSON-encodable types
+  dynamic _convertToEncodable(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) {
+      return value.toDate().toIso8601String(); // Fixed: Use toDate() first
+    }
+    if (value is Map<String, dynamic>) {
+      return value.map((k, v) => MapEntry(k, _convertToEncodable(v)));
+    }
+    if (value is List) {
+      return value.map((v) => _convertToEncodable(v)).toList();
+    }
+    // For other types like DateTime, convert if needed
+    if (value is DateTime) {
+      return value.toIso8601String();
+    }
+    return value;
   }
 
   Map<String, dynamic> _createDefaultMatchResult(
@@ -134,7 +168,7 @@ class MatchingService {
       Map<String, dynamic> result, Map<String, dynamic> candidate) {
     return {
       'candidate': candidate,
-      'match_score': (result['match_score'] as num?)?.toDouble() ?? 0.0,
+      'match_score': (result['overall_match_score'] as num?)?.toDouble() ?? 0.0,
       'category_scores': result['category_scores'] as Map<String, dynamic>? ??
           {
             'required_skills': 0.0,

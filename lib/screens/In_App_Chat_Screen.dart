@@ -1,306 +1,198 @@
+// lib/screens/chat_screen.dart
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class InAppChatScreen extends StatefulWidget {
-  const InAppChatScreen({Key? key}) : super(key: key);
+class ChatScreen extends StatefulWidget {
+  final String peerId;
+  final String peerName; // we still accept it, but we'll refresh from DB
+
+  const ChatScreen({
+    Key? key,
+    required this.peerId,
+    required this.peerName,
+  }) : super(key: key);
 
   @override
-  State<InAppChatScreen> createState() => _InAppChatScreenState();
+  State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _InAppChatScreenState extends State<InAppChatScreen> {
-  final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  final List<Map<String, dynamic>> _messages = [];
-  bool _isAttaching = false;
+class _ChatScreenState extends State<ChatScreen> {
+  final _auth = FirebaseAuth.instance;
+  final _textCtrl = TextEditingController();
+  late final String _chatId;
 
   @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    final myId = _auth.currentUser!.uid;
+    _chatId = (myId.compareTo(widget.peerId) < 0)
+        ? '${myId}_${widget.peerId}'
+        : '${widget.peerId}_${myId}';
+    _ensureChatDoc(); // also refreshes userA/userB names
   }
 
-  void _sendMessage() {
-    if (_messageController.text.isNotEmpty) {
-      setState(() {
-        _messages.add({
-          'text': _messageController.text,
-          'isMe': true,
-          'time': DateTime.now(),
-          'status': 'sent'
-        });
-        _messageController.clear();
-      });
+  // ---------- Name resolution helpers ----------
+  Future<String> _nameFor(String uid) async {
+    // 1) users/{uid}.name (preferred)
+    try {
+      final u =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final d = u.data();
+      if (d != null) {
+        final n = (d['name'] as String?)?.trim();
+        if (n != null && n.isNotEmpty) return n;
+        final e = (d['email'] as String?)?.trim();
+        if (e != null && e.isNotEmpty) return e;
+      }
+    } catch (_) {}
 
-      // Scroll to bottom after message is sent
-      Future.delayed(const Duration(milliseconds: 100), () {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+    // 2) JobSeekersProfiles/{uid}.name (common for candidates)
+    try {
+      final p = await FirebaseFirestore.instance
+          .collection('JobSeekersProfiles')
+          .doc(uid)
+          .get();
+      final pd = p.data();
+      final pn = (pd?['name'] as String?)?.trim();
+      if (pn != null && pn.isNotEmpty) return pn;
+    } catch (_) {}
+
+    // 3) Auth displayName/email for current user
+    final me = _auth.currentUser;
+    if (me != null && me.uid == uid) {
+      return me.displayName ?? me.email ?? 'User';
+    }
+
+    // 4) Generic fallback
+    return 'User';
+  }
+
+  Future<void> _ensureChatDoc() async {
+    final ref = FirebaseFirestore.instance.collection('chats').doc(_chatId);
+    final myId = _auth.currentUser!.uid;
+
+    // Resolve both names robustly (no emails shown if name exists)
+    final meName = await _nameFor(myId);
+    final peerName = await _nameFor(widget.peerId);
+
+    final snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set({
+        'participants': [myId, widget.peerId],
+        'updatedAt': FieldValue.serverTimestamp(),
+        'lastMessage': '',
+        'userA': {'id': myId, 'name': meName},
+        'userB': {'id': widget.peerId, 'name': peerName},
       });
+    } else {
+      // Keep names fresh (merge) on every open
+      await ref.set({
+        'participants': FieldValue.arrayUnion([myId, widget.peerId]),
+        'userA': {'id': myId, 'name': meName},
+        'userB': {'id': widget.peerId, 'name': peerName},
+      }, SetOptions(merge: true));
     }
   }
 
+  // ---------- Send ----------
+  Future<void> _sendMessage(String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+
+    final myId = _auth.currentUser!.uid;
+    final msgRef = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(_chatId)
+        .collection('messages')
+        .doc();
+
+    await msgRef.set({
+      'id': msgRef.id,
+      'chatId': _chatId,
+      'text': trimmed,
+      'senderId': myId,
+      'receiverId': widget.peerId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    await FirebaseFirestore.instance.collection('chats').doc(_chatId).set({
+      'lastMessage': trimmed,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    _textCtrl.clear();
+  }
+
+  // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            CircleAvatar(
-              backgroundImage:
-                  const NetworkImage('https://via.placeholder.com/150'),
-              radius: 20,
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Text('John Doe', style: TextStyle(fontSize: 16)),
-                Text('Software Engineer Candidate',
-                    style:
-                        TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.phone),
-            onPressed: () {},
-            tooltip: 'Voice Call',
-          ),
-          IconButton(
-            icon: const Icon(Icons.videocam),
-            onPressed: () {},
-            tooltip: 'Video Call',
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {},
-            tooltip: 'More Options',
-          ),
-        ],
-      ),
+      appBar: AppBar(title: Text(widget.peerName)),
       body: Column(
         children: [
-          // Chat messages area
           Expanded(
-            child: _messages.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.chat_bubble_outline,
-                            size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text(
-                          'No messages yet',
-                          style: TextStyle(fontSize: 18, color: Colors.grey),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('chats')
+                  .doc(_chatId)
+                  .collection('messages')
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
+              builder: (_, snap) {
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final docs = snap.data!.docs;
+                return ListView.builder(
+                  reverse: true,
+                  itemCount: docs.length,
+                  itemBuilder: (_, i) {
+                    final data = docs[i].data() as Map<String, dynamic>;
+                    final isMe = data['senderId'] == _auth.currentUser!.uid;
+                    return Align(
+                      alignment:
+                          isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(
+                            vertical: 4, horizontal: 8),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 10, horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: isMe ? Colors.blue[200] : Colors.grey[300],
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Start the conversation with this candidate',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      final message = _messages[index];
-                      final bool isMe = message['isMe'];
-                      final time = DateFormat('HH:mm').format(message['time']);
-
-                      return Align(
-                        alignment:
-                            isMe ? Alignment.centerRight : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 16),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isMe ? Colors.blue[100] : Colors.grey[200],
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          constraints: BoxConstraints(
-                            maxWidth: MediaQuery.of(context).size.width * 0.75,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                message['text'],
-                                style: const TextStyle(fontSize: 16),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    time,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  if (isMe) ...[
-                                    const SizedBox(width: 4),
-                                    Icon(
-                                      message['status'] == 'read'
-                                          ? Icons.done_all
-                                          : Icons.done,
-                                      size: 16,
-                                      color: message['status'] == 'read'
-                                          ? Colors.blue
-                                          : Colors.grey[600],
-                                    ),
-                                  ]
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-
-          // Quick response templates
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            color: Colors.grey[100],
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  _buildQuickResponse('Schedule Interview'),
-                  _buildQuickResponse('Send Offer Details'),
-                  _buildQuickResponse('Request Documents'),
-                  _buildQuickResponse('Thank you for your time'),
-                  _buildQuickResponse('Questions?'),
-                ],
-              ),
+                        child: Text((data['text'] ?? '') as String),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ),
-
-          // Input area
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.2),
-                  spreadRadius: 1,
-                  blurRadius: 3,
+          SafeArea(
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textCtrl,
+                    decoration: const InputDecoration(
+                      hintText: 'Type a message',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.all(12),
+                    ),
+                    onSubmitted: _sendMessage,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: () => _sendMessage(_textCtrl.text),
                 ),
               ],
             ),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () {
-                      setState(() {
-                        _isAttaching = !_isAttaching;
-                      });
-                    },
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: const InputDecoration(
-                        hintText: 'Type a message...',
-                        border: InputBorder.none,
-                      ),
-                      maxLines: null,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.mic),
-                    onPressed: () {},
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.send),
-                    color: Colors.blue,
-                    onPressed: _sendMessage,
-                  ),
-                ],
-              ),
-            ),
           ),
-
-          // Attachment options
-          if (_isAttaching)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-              color: Colors.grey[100],
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildAttachmentOption(Icons.image, 'Image', Colors.purple),
-                  _buildAttachmentOption(
-                      Icons.insert_drive_file, 'Document', Colors.blue),
-                  _buildAttachmentOption(
-                      Icons.calendar_today, 'Calendar', Colors.orange),
-                  _buildAttachmentOption(
-                      Icons.location_on, 'Location', Colors.green),
-                  _buildAttachmentOption(
-                      Icons.description, 'Offer Letter', Colors.red),
-                ],
-              ),
-            ),
         ],
       ),
-    );
-  }
-
-  Widget _buildQuickResponse(String text) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      child: InkWell(
-        onTap: () {
-          _messageController.text = text;
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.blue),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            text,
-            style: const TextStyle(color: Colors.blue),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAttachmentOption(IconData icon, String label, Color color) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        CircleAvatar(
-          backgroundColor: color.withOpacity(0.2),
-          child: Icon(icon, color: color),
-        ),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(fontSize: 12)),
-      ],
     );
   }
 }

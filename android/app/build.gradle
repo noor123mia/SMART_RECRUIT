@@ -15,6 +15,9 @@ android {
         targetSdkVersion 34 // Target SDK Version
         versionCode 1
         versionName "1.0"
+          manifestPlaceholders = [
+        'default_web_client_id': '548567710035-sb1ais0f2bufd51f1qbk76hk6ikrg3bl.apps.googleusercontent.com'  // Web Client ID (not Android—Google Console mein "Web client" ka Client ID copy kar lo)
+    ]
     }
 
     buildTypes {
@@ -26,6 +29,7 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -35,4 +39,10 @@ android {
 
 flutter {
     source "../.."
+}
+dependencies {
+    // ...
+    implementation platform('com.google.firebase:firebase-bom:32.3.1')
+    implementation 'com.google.firebase:firebase-messaging'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }
