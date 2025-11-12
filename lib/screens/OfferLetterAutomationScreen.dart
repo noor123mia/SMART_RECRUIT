@@ -4,14 +4,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:developer' as developer;
 import 'package:googleapis/gmail/v1.dart' as g;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:typed_data';
 
 // Custom HTTP client for Google APIs authentication
 class GoogleAuthClient extends http.BaseClient {
@@ -51,7 +49,7 @@ class _OfferLetterAutomationScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text(
           "Offer Letter Automation",
@@ -65,7 +63,7 @@ class _OfferLetterAutomationScreenState
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -116,12 +114,12 @@ class _OfferLetterAutomationScreenState
                       isExpanded: true,
                       hint: const Row(
                         children: [
-                          Icon(Icons.work_outline, color: Color(0xFF6366F1)),
+                          Icon(Icons.work_outline, color: Color(0xFF3B82F6)),
                           SizedBox(width: 12),
                           Text(
                             "Select Job Position",
                             style: TextStyle(
-                              color: Color(0xFF6366F1),
+                              color: Color(0xFF3B82F6),
                               fontSize: 15,
                               fontWeight: FontWeight.w500,
                             ),
@@ -130,7 +128,7 @@ class _OfferLetterAutomationScreenState
                       ),
                       value: selectedJobId,
                       icon: const Icon(Icons.keyboard_arrow_down,
-                          color: Color(0xFF6366F1), size: 28),
+                          color: Color(0xFF3B82F6), size: 28),
                       items: jobs.map((job) {
                         var data = job.data() as Map<String, dynamic>;
                         return DropdownMenuItem<String>(
@@ -141,11 +139,11 @@ class _OfferLetterAutomationScreenState
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color:
-                                      const Color(0xFF6366F1).withOpacity(0.1),
+                                      const Color(0xFF3B82F6).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Icon(Icons.business_center,
-                                    color: Color(0xFF6366F1), size: 20),
+                                    color: Color(0xFF3B82F6), size: 20),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -201,7 +199,7 @@ class _OfferLetterAutomationScreenState
                           Container(
                             padding: const EdgeInsets.all(24),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withOpacity(0.1),
+                              color: const Color(0xFF3B82F6).withOpacity(0.1),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(Icons.person_off_outlined,
@@ -241,12 +239,12 @@ class _OfferLetterAutomationScreenState
                               margin: const EdgeInsets.only(bottom: 12),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? const Color(0xFFEEF2FF)
+                                    ? const Color(0xFFDBEAFE)
                                     : Colors.white,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: isSelected
-                                      ? const Color(0xFF6366F1)
+                                      ? const Color(0xFF3B82F6)
                                       : Colors.grey[200]!,
                                   width: isSelected ? 2 : 1,
                                 ),
@@ -277,8 +275,8 @@ class _OfferLetterAutomationScreenState
                                             gradient: LinearGradient(
                                               colors: isSelected
                                                   ? [
-                                                      const Color(0xFF6366F1),
-                                                      const Color(0xFF8B5CF6)
+                                                      const Color(0xFF3B82F6),
+                                                      const Color(0xFF1D4ED8)
                                                     ]
                                                   : [
                                                       Colors.grey[300]!,
@@ -309,7 +307,7 @@ class _OfferLetterAutomationScreenState
                                                   fontWeight: FontWeight.w700,
                                                   fontSize: 16,
                                                   color: isSelected
-                                                      ? const Color(0xFF6366F1)
+                                                      ? const Color(0xFF3B82F6)
                                                       : Colors.black87,
                                                 ),
                                               ),
@@ -359,13 +357,13 @@ class _OfferLetterAutomationScreenState
                           child: Container(
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                                colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
                               ),
                               borderRadius: BorderRadius.circular(14),
                               boxShadow: [
                                 BoxShadow(
                                   color:
-                                      const Color(0xFF6366F1).withOpacity(0.3),
+                                      const Color(0xFF3B82F6).withOpacity(0.3),
                                   blurRadius: 12,
                                   offset: const Offset(0, 4),
                                 ),
@@ -438,7 +436,7 @@ class _OfferLetterAutomationScreenState
                   padding: const EdgeInsets.all(24),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                      colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
                     ),
                     borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(24),
@@ -508,7 +506,7 @@ class _OfferLetterAutomationScreenState
                                 return Theme(
                                   data: Theme.of(context).copyWith(
                                     colorScheme: const ColorScheme.light(
-                                      primary: Color(0xFF6366F1),
+                                      primary: Color(0xFF3B82F6),
                                       onPrimary: Colors.white,
                                     ),
                                   ),
@@ -548,7 +546,7 @@ class _OfferLetterAutomationScreenState
                                 return Theme(
                                   data: Theme.of(context).copyWith(
                                     colorScheme: const ColorScheme.light(
-                                      primary: Color(0xFF6366F1),
+                                      primary: Color(0xFF3B82F6),
                                       onPrimary: Colors.white,
                                     ),
                                   ),
@@ -621,12 +619,12 @@ class _OfferLetterAutomationScreenState
                     width: double.infinity,
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
                       ),
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF6366F1).withOpacity(0.3),
+                          color: const Color(0xFF3B82F6).withOpacity(0.3),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
@@ -747,7 +745,7 @@ class _OfferLetterAutomationScreenState
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
-              prefixIcon: Icon(icon, color: const Color(0xFF6366F1)),
+              prefixIcon: Icon(icon, color: const Color(0xFF3B82F6)),
               border: InputBorder.none,
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -961,7 +959,7 @@ $_recruiterName
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text(
           "Offer Letter Preview",
@@ -980,7 +978,7 @@ $_recruiterName
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
             ),
           ),
         ),
@@ -1025,12 +1023,12 @@ $_recruiterName
         child: Container(
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-              colors: [Color(0xFF1E40AF), Color(0xFF3B82F6)],
+              colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
             ),
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF1E40AF).withOpacity(0.3),
+                color: const Color(0xFF3B82F6).withOpacity(0.3),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),
@@ -1091,7 +1089,7 @@ $_recruiterName
                 padding: const EdgeInsets.all(24),
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Color(0xFF1E40AF), Color(0xFF3B82F6)],
+                    colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
                   ),
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(16),
@@ -1242,7 +1240,7 @@ $_recruiterName
                         label: const Text("Cancel"),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          side: const BorderSide(color: Color(0xFF1E40AF)),
+                          side: const BorderSide(color: Color(0xFF3B82F6)),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -1255,12 +1253,12 @@ $_recruiterName
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF1E40AF), Color(0xFF3B82F6)],
+                            colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
                           ),
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF1E40AF).withOpacity(0.3),
+                              color: const Color(0xFF3B82F6).withOpacity(0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 4),
                             ),
@@ -1319,14 +1317,14 @@ $_recruiterName
         children: [
           Row(
             children: [
-              Icon(icon, color: const Color(0xFF1E40AF), size: 20),
+              Icon(icon, color: const Color(0xFF3B82F6), size: 20),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF1E40AF),
+                  color: Color(0xFF3B82F6),
                 ),
               ),
             ],
@@ -1379,7 +1377,7 @@ $_recruiterName
               fontSize: 24,
               fontWeight: FontWeight.w700,
               letterSpacing: 2,
-              color: Color(0xFF1E40AF),
+              color: Color(0xFF3B82F6),
             ),
           ),
         ),
@@ -1397,7 +1395,7 @@ $_recruiterName
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1E40AF),
+              color: Color(0xFF3B82F6),
               letterSpacing: 1.5,
             ),
           ),
@@ -1450,7 +1448,7 @@ $_recruiterName
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF1E40AF),
+            color: Color(0xFF3B82F6),
           ),
         ),
         const SizedBox(height: 8),
@@ -1504,7 +1502,7 @@ $_recruiterName
             fontSize: 14,
             fontWeight: FontWeight.w700,
             letterSpacing: 1,
-            color: Color(0xFF1E40AF),
+            color: Color(0xFF3B82F6),
           ),
         ),
         const SizedBox(height: 16),
@@ -1522,7 +1520,7 @@ $_recruiterName
       style: const TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w700,
-        color: Color(0xFF1E40AF),
+        color: Color(0xFF3B82F6),
       ),
     );
   }
@@ -1578,7 +1576,7 @@ $_recruiterName
                   padding: const EdgeInsets.all(16),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF1E40AF), Color(0xFF3B82F6)],
+                      colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
                     ),
                     shape: BoxShape.circle,
                   ),
@@ -1750,7 +1748,7 @@ $_recruiterName
                 fontSize: 24,
                 fontWeight: pw.FontWeight.bold,
                 letterSpacing: 2,
-                color: PdfColor.fromHex('#1E40AF'),
+                color: PdfColor.fromHex('#3B82F6'),
               ),
             ),
           ),
@@ -1769,7 +1767,7 @@ $_recruiterName
                 fontSize: 16,
                 fontWeight: pw.FontWeight.bold,
                 letterSpacing: 1.5,
-                color: PdfColor.fromHex('#1E40AF'),
+                color: PdfColor.fromHex('#3B82F6'),
               ),
             ),
           ),
@@ -1798,7 +1796,7 @@ $_recruiterName
             style: pw.TextStyle(
               fontSize: 13,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColor.fromHex('#1E40AF'),
+              color: PdfColor.fromHex('#3B82F6'),
             ),
           ),
           pw.SizedBox(height: 10),
@@ -1819,7 +1817,7 @@ $_recruiterName
             style: pw.TextStyle(
               fontSize: 13,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColor.fromHex('#1E40AF'),
+              color: PdfColor.fromHex('#3B82F6'),
             ),
           ),
           pw.SizedBox(height: 10),
@@ -1870,7 +1868,7 @@ $_recruiterName
               fontSize: 12,
               fontWeight: pw.FontWeight.bold,
               letterSpacing: 1,
-              color: PdfColor.fromHex('#1E40AF'),
+              color: PdfColor.fromHex('#3B82F6'),
             ),
           ),
           pw.SizedBox(height: 12),

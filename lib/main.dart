@@ -4,21 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_application_2/screens/AllCandidates.dart';
-import 'package:flutter_application_2/screens/AppliedCandidatesMatchingScreen.dart';
 import 'package:flutter_application_2/screens/CandidateApplicationScreen.dart';
-import 'package:flutter_application_2/screens/CandidateMatchDetailScreen.dart';
 import 'package:flutter_application_2/screens/CandidateOffers.dart';
 import 'package:flutter_application_2/screens/InterviewManagementScreen.dart';
 import 'package:flutter_application_2/screens/InterviewScheduleScreen.dart';
 import 'package:flutter_application_2/screens/JobMetricsScreen.dart';
 import 'package:flutter_application_2/screens/JobsAppliedByCandidatesScreen.dart';
 import 'package:flutter_application_2/screens/DraftJobsScreen.dart';
-import 'package:flutter_application_2/screens/In_App_Chat_Screen.dart';
 import 'package:flutter_application_2/screens/InterviewQuestionsScreen.dart';
+import 'package:flutter_application_2/screens/MyChatsPage.dart';
 import 'package:flutter_application_2/screens/OfferLetterAutomationScreen.dart';
 import 'package:flutter_application_2/screens/PostedJobsScreen.dart';
 import 'package:flutter_application_2/screens/notifications_screen.dart';
-import 'package:flutter_application_2/services/AppNotificationManager.dart';
 import 'package:flutter_application_2/services/fcm_token_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -251,10 +248,11 @@ class GlobalPreferences {
 }
 
 final appTheme = ThemeData(
-  primaryColor: Color(0xFF1E3A8A), // Rich navy blue
-  primaryColorLight: Color(0xFF3151A6),
-  secondaryHeaderColor: Color(0xFF0D9488), // Teal accent
-  scaffoldBackgroundColor: Color(0xFFF9FAFB),
+  primaryColor: Color(0xFF3B82F6), // Primary Blue
+  primaryColorLight: Color(0xFF60A5FA), // Lighter blue variant
+  primaryColorDark: Color(0xFF1D4ED8), // Secondary Dark Blue
+  secondaryHeaderColor: Color(0xFF0D9488), // Accent Teal
+  scaffoldBackgroundColor: Colors.white, // Background White
   fontFamily:
       'Poppins', // Assuming Poppins is available, otherwise system font will be used
   textTheme: TextTheme(
@@ -289,7 +287,8 @@ final appTheme = ThemeData(
   ),
   elevatedButtonTheme: ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
-      backgroundColor: Color(0xFF1E3A8A),
+      backgroundColor: Color(
+          0xFF3B82F6), // Primary Blue; for gradient effect, wrap button with Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)], begin: Alignment.topLeft, end: Alignment.bottomRight,))), child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent), ...))
       foregroundColor: Colors.white,
       padding: EdgeInsets.symmetric(vertical: 16, horizontal: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -304,7 +303,7 @@ final appTheme = ThemeData(
     color: Colors.white,
   ),
   appBarTheme: AppBarTheme(
-    backgroundColor: Color(0xFF1E3A8A),
+    backgroundColor: Color(0xFF3B82F6), // Primary Blue
     elevation: 0,
     centerTitle: false,
     iconTheme: IconThemeData(color: Colors.white),
@@ -320,10 +319,10 @@ final appTheme = ThemeData(
     ),
   ),
   colorScheme: ColorScheme.light(
-    primary: Color(0xFF1E3A8A),
-    secondary: Color(0xFF0D9488),
+    primary: Color(0xFF3B82F6), // Primary Blue
+    secondary: Color(0xFF0D9488), // Accent Teal
     surface: Colors.white,
-    background: Color(0xFFF9FAFB),
+    background: Colors.white, // Background White
     error: Color(0xFFEF4444),
   ),
 );
@@ -2379,7 +2378,7 @@ class _HomeScreenState extends State<HomeScreen>
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => _MyChatsPage(isRecruiter: true),
+                builder: (context) => MyChatsPage(isRecruiter: true),
               ),
             );
           },
@@ -2397,6 +2396,17 @@ class _HomeScreenState extends State<HomeScreen>
               context,
               MaterialPageRoute(
                   builder: (context) => CandidateApplicationScreen()),
+            );
+          },
+        ),
+        Feature(
+          icon: Icons.lightbulb_outline,
+          title: 'Suggested Jobs',
+          color: Color(0xFF10B981),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => NotificationsScreen()),
             );
           },
         ),
@@ -2435,17 +2445,6 @@ class _HomeScreenState extends State<HomeScreen>
           },
         ),
         Feature(
-          icon: Icons.lightbulb_outline,
-          title: 'Suggested Jobs',
-          color: Color(0xFF10B981),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => NotificationsScreen()),
-            );
-          },
-        ),
-        Feature(
           icon: Icons.message,
           title: 'My Chats',
           color: Color.fromARGB(255, 24, 135, 40),
@@ -2453,7 +2452,7 @@ class _HomeScreenState extends State<HomeScreen>
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => _MyChatsPage(isRecruiter: false),
+                builder: (context) => MyChatsPage(isRecruiter: false),
               ),
             );
           },
@@ -2838,354 +2837,7 @@ class Feature {
   });
 }
 
-/// Chat badge in AppBar (opens role-aware chat list)
-class _ChatAppBarButton extends StatelessWidget {
-  final bool isRecruiter;
-  const _ChatAppBarButton({Key? key, required this.isRecruiter})
-      : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final user = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return IconButton(
-        icon: const Icon(Icons.chat_bubble_outline),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) => _MyChatsPage(isRecruiter: isRecruiter)),
-        ),
-      );
-    }
-
-    final stream = FirebaseFirestore.instance
-        .collection('chats')
-        .where('participants', arrayContains: user.uid)
-        .snapshots();
-
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: stream,
-      builder: (_, snap) {
-        int unread = 0; // you can implement unread later
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.chat_bubble_outline),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => _MyChatsPage(isRecruiter: isRecruiter)),
-              ),
-            ),
-            if (unread > 0)
-              Positioned(
-                right: 8,
-                top: 10,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$unread',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Role-aware My Chats page:
-/// - Recruiter → list candidates who applied to this recruiter's jobs (names auto from users/Users)
-/// - Candidate → list chat threads (other side's real name)
-class _MyChatsPage extends StatelessWidget {
-  final bool isRecruiter;
-  const _MyChatsPage({Key? key, required this.isRecruiter}) : super(key: key);
-
-  /// Resolve a user's display name. Tries users then Users.
-  Future<String> _getUserName(String uid) async {
-    final fs = FirebaseFirestore.instance;
-
-    // try lower-case 'users'
-    final docLower = await fs.collection('users').doc(uid).get();
-    if (docLower.exists) {
-      final name = (docLower.data()?['name'] as String?)?.trim();
-      if (name != null && name.isNotEmpty) return name;
-    }
-
-    // fallback to 'Users'
-    final docUpper = await fs.collection('Users').doc(uid).get();
-    if (docUpper.exists) {
-      final name = (docUpper.data()?['name'] as String?)?.trim();
-      if (name != null && name.isNotEmpty) return name;
-    }
-
-    // last resort: email/displayName
-    final me = firebase_auth.FirebaseAuth.instance.currentUser;
-    if (me != null && me.uid == uid) {
-      return me.displayName ?? me.email ?? 'User';
-    }
-    return 'User';
-  }
-
-  // -------- Recruiter view: candidates who applied to my jobs --------
-  Future<List<String>> _fetchCandidateIdsForRecruiter(String meUid) async {
-    final fs = FirebaseFirestore.instance;
-
-    // 1) jobs posted by this recruiter
-    final jobsSnap = await fs
-        .collection('JobsPosted')
-        .where('recruiterId', isEqualTo: meUid)
-        .get();
-    final jobIds = jobsSnap.docs.map((d) => d.id).toList();
-    if (jobIds.isEmpty) return [];
-
-    // 2) applications for those jobIds
-    // Firestore whereIn supports up to 10 values per query; if >10, chunk it.
-    final candidateIds = <String>{};
-
-    Future<void> readAppsChunk(List<String> chunk) async {
-      final apps = await fs
-          .collection('AppliedCandidates')
-          .where('jobId', whereIn: chunk)
-          .get();
-      for (final a in apps.docs) {
-        final cid = a.data()['candidateId'] as String?;
-        if (cid != null && cid.isNotEmpty) candidateIds.add(cid);
-      }
-    }
-
-    const maxIn = 10;
-    for (var i = 0; i < jobIds.length; i += maxIn) {
-      await readAppsChunk(jobIds.sublist(
-          i, i + maxIn > jobIds.length ? jobIds.length : i + maxIn));
-    }
-
-    return candidateIds.toList();
-  }
-
-  // -------- Candidate view: my chat threads --------
-  Stream<QuerySnapshot<Map<String, dynamic>>> _myThreads(String meUid) {
-    return FirebaseFirestore.instance
-        .collection('chats')
-        .where('participants', arrayContains: meUid)
-        .orderBy('updatedAt', descending: true)
-        .snapshots();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final me = firebase_auth.FirebaseAuth.instance.currentUser!;
-    return Scaffold(
-      appBar: AppBar(title: const Text('My Chats')),
-      body: isRecruiter
-          ? FutureBuilder<List<String>>(
-              future: _fetchCandidateIdsForRecruiter(me.uid),
-              builder: (_, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (!snap.hasData || snap.data!.isEmpty) {
-                  return const Center(child: Text('No applicants yet'));
-                }
-                final candidates = snap.data!;
-
-                return ListView.separated(
-                  itemCount: candidates.length,
-                  separatorBuilder: (_, __) => const Divider(height: 0),
-                  itemBuilder: (context, i) {
-                    final peerId = candidates[i];
-                    return FutureBuilder<String>(
-                      future: _getUserName(peerId),
-                      builder: (_, nameSnap) {
-                        final name = nameSnap.data ?? 'User';
-                        return ListTile(
-                          leading: CircleAvatar(
-                            child: Text(
-                                name.isNotEmpty ? name[0].toUpperCase() : '?'),
-                          ),
-                          title: Text(name, overflow: TextOverflow.ellipsis),
-                          subtitle: const Text('Tap to chat'),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(
-                                  peerId: peerId,
-                                  peerName: name,
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            )
-          : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _myThreads(me.uid),
-              builder: (_, snap) {
-                if (snap.hasError) {
-                  return Center(child: Text('Error: ${snap.error}'));
-                }
-                if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final docs = snap.data!.docs;
-                if (docs.isEmpty) {
-                  return const Center(child: Text('No chats yet'));
-                }
-
-                return ListView.separated(
-                  itemCount: docs.length,
-                  separatorBuilder: (_, __) => const Divider(height: 0),
-                  itemBuilder: (context, i) {
-                    final data = docs[i].data();
-
-                    // find the other participant
-                    String peerId = '';
-                    final parts = (data['participants'] as List?) ?? const [];
-                    if (parts.isNotEmpty) {
-                      peerId = (parts.firstWhere((p) => p != me.uid,
-                          orElse: () => '')) as String;
-                    }
-
-                    // try to use userA/userB if present
-                    final a = Map<String, dynamic>.from(data['userA'] ?? {});
-                    final b = Map<String, dynamic>.from(data['userB'] ?? {});
-                    String? nameFromDoc;
-                    if (a.isNotEmpty && b.isNotEmpty) {
-                      nameFromDoc = (a['id'] == me.uid ? b['name'] : a['name'])
-                          as String?;
-                    }
-
-                    return FutureBuilder<String>(
-                      future:
-                          nameFromDoc != null && nameFromDoc.trim().isNotEmpty
-                              ? Future.value(nameFromDoc)
-                              : _getUserName(peerId),
-                      builder: (_, nameSnap) {
-                        final peerName = nameSnap.data ?? 'User';
-                        final last = (data['lastMessage'] as String?) ?? '';
-                        final updated =
-                            (data['updatedAt'] as Timestamp?)?.toDate();
-
-                        return ListTile(
-                          leading: CircleAvatar(
-                            child: Text(peerName.isNotEmpty
-                                ? peerName[0].toUpperCase()
-                                : '?'),
-                          ),
-                          title:
-                              Text(peerName, overflow: TextOverflow.ellipsis),
-                          subtitle: Text(
-                            last,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: updated == null
-                              ? null
-                              : Text(_hhmm(updated),
-                                  style:
-                                      Theme.of(context).textTheme.labelSmall),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(
-                                  peerId: peerId,
-                                  peerName: peerName,
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            ),
-      // Optional FAB (manual new chat)
-      floatingActionButton: isRecruiter
-          ? null
-          : FloatingActionButton(
-              child: const Icon(Icons.chat),
-              onPressed: () async {
-                // pick any user to start chat (except me) if you want
-                final usersSnap = await FirebaseFirestore.instance
-                    .collection('users')
-                    .where(FieldPath.documentId, isNotEqualTo: me.uid)
-                    .limit(25)
-                    .get();
-
-                final list = usersSnap.docs;
-                if (list.isEmpty) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('No other users found')),
-                    );
-                  }
-                  return;
-                }
-
-                if (!context.mounted) return;
-                showModalBottomSheet(
-                  context: context,
-                  builder: (ctx) => SafeArea(
-                    child: ListView(
-                      children: list.map((d) {
-                        final data = d.data();
-                        final name = (data['name'] as String?) ?? 'User';
-                        return ListTile(
-                          leading:
-                              const CircleAvatar(child: Icon(Icons.person)),
-                          title: Text(name),
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(
-                                  peerId: d.id,
-                                  peerName: name,
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                );
-              },
-            ),
-    );
-  }
-
-  String _hhmm(DateTime d) {
-    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
-    final m = d.minute.toString().padLeft(2, '0');
-    final ap = d.hour < 12 ? 'AM' : 'PM';
-    return '$h:$m $ap';
-  }
-}
-
 // Settings Screen with Logout Feature
-
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
 
@@ -3305,6 +2957,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _toggleChat(bool v) async {
     setState(() => _chatEnabled = v);
     await _saveSettings(chat: v);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(v
+              ? 'Chats enabled successfully'
+              : 'Chats disabled. You won\'t be able to send or receive messages.'),
+          backgroundColor: v ? Colors.green : Colors.orange,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   Future<void> _showChangePasswordDialog() async {
@@ -3532,16 +3195,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     _buildSectionTitle(context, 'Preferences'),
                     _switchTile(
-                      icon: Icons.notifications_active_outlined,
-                      title: 'App Notifications',
-                      value: _appNotifications,
-                      onChanged: _toggleNotifications,
-                    ),
-                    _switchTile(
                       icon: Icons.forum_outlined,
                       title: 'In-App Chat',
                       value: _chatEnabled,
                       onChanged: _toggleChat,
+                      subtitle: _chatEnabled
+                          ? 'Send and receive messages with recruiters/candidates'
+                          : 'Disabled - No messages can be sent or received',
                     ),
                     _buildSectionTitle(context, 'Help'),
                     _itemTile(
@@ -3638,6 +3298,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String title,
     required bool value,
     required ValueChanged<bool> onChanged,
+    String? subtitle,
   }) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -3651,6 +3312,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       title: Text(title,
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+      subtitle: subtitle != null
+          ? Text(subtitle,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 13))
+          : null,
       trailing: Switch(
         value: value,
         onChanged: onChanged,

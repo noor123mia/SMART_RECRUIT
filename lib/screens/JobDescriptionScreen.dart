@@ -231,10 +231,10 @@ class JobDescriptionScreen extends StatelessWidget {
 // Template Selection Screen
 class JobTemplateScreen extends StatefulWidget {
   @override
-  _JobDescriptionScreenState createState() => _JobDescriptionScreenState();
+  _JobTemplateScreenState createState() => _JobTemplateScreenState();
 }
 
-class _JobDescriptionScreenState extends State<JobTemplateScreen>
+class _JobTemplateScreenState extends State<JobTemplateScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController companyNameController = TextEditingController();
   final TextEditingController departmentController = TextEditingController();
@@ -243,13 +243,11 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
   final TextEditingController contractTypeController = TextEditingController();
   final TextEditingController salaryRangeController = TextEditingController();
   final TextEditingController lastDateController = TextEditingController();
-
   String? selectedJobTitle;
   Map<String, dynamic>? jobDescription;
   bool isLoading = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-
   List<String> jobTitles = [
     "Software Engineer",
     "Product Manager",
@@ -267,6 +265,7 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
     _animationController.forward();
+    _autofillCompanyName();
   }
 
   @override
@@ -280,13 +279,11 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
       isLoading = true;
       jobDescription = null;
     });
-
     try {
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('job_descriptions')
           .where('title', isEqualTo: title)
           .get();
-
       if (querySnapshot.docs.isNotEmpty) {
         setState(() {
           jobDescription =
@@ -302,7 +299,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
     } catch (e) {
       print("Error fetching job description: $e");
     }
-
     setState(() {
       isLoading = false;
     });
@@ -327,7 +323,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
         );
       },
     );
-
     if (pickedDate != null) {
       setState(() {
         lastDateController.text =
@@ -363,9 +358,7 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
       );
       return;
     }
-
     String recruiterId = FirebaseAuth.instance.currentUser!.uid;
-
     Timestamp? lastDateTimestamp;
     try {
       List<String> parts = lastDateController.text.trim().split('/');
@@ -395,7 +388,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
       );
       return;
     }
-
     Map<String, dynamic> jobDetails = {
       "company_name": companyNameController.text.trim(),
       "department": departmentController.text.trim(),
@@ -409,7 +401,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
       "recruiterId": recruiterId,
       "posted_on": FieldValue.serverTimestamp(),
     };
-
     try {
       var jobQuery = await FirebaseFirestore.instance
           .collection("JobsPosted")
@@ -422,14 +413,12 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
           .where("salary_range", isEqualTo: salaryRangeController.text.trim())
           .where("last_date_to_apply", isEqualTo: lastDateTimestamp)
           .get();
-
       if (jobQuery.docs.isNotEmpty) {
         String jobId = jobQuery.docs.first.id;
         await FirebaseFirestore.instance
             .collection("JobsPosted")
             .doc(jobId)
             .update(jobDetails);
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -446,8 +435,9 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
           ),
         );
       } else {
-        await FirebaseFirestore.instance.collection("JobsPosted").add(jobDetails);
-
+        await FirebaseFirestore.instance
+            .collection("JobsPosted")
+            .add(jobDetails);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -474,6 +464,33 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
+    }
+  }
+
+  Future<void> _autofillCompanyName() async {
+    try {
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        return;
+      }
+      String recruiterId = currentUser.uid;
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('verificationRequests')
+          .where('userId', isEqualTo: recruiterId)
+          .limit(1)
+          .get();
+      if (querySnapshot.docs.isNotEmpty) {
+        Map<String, dynamic> data =
+            querySnapshot.docs.first.data() as Map<String, dynamic>;
+        String companyName = data['companyName'] ?? '';
+        if (companyName.isNotEmpty) {
+          setState(() {
+            companyNameController.text = companyName;
+          });
+        }
+      }
+    } catch (e) {
+      print("Error autofilling company name: $e");
     }
   }
 
@@ -520,7 +537,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
                     ),
                     Divider(height: 30, thickness: 1),
                     SizedBox(height: 10),
-
                     // Company info section
                     Container(
                       padding:
@@ -547,7 +563,11 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
                     ),
                     SizedBox(height: 16),
                     buildTextField(
-                        "Company Name", companyNameController, Icons.business),
+                      "Company Name",
+                      companyNameController,
+                      Icons.business,
+                      readOnly: companyNameController.text.isNotEmpty,
+                    ),
                     SizedBox(height: 10),
                     buildTextField(
                         "Department", departmentController, Icons.category),
@@ -555,7 +575,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
                     buildTextField(
                         "Location", locationController, Icons.location_on),
                     SizedBox(height: 20),
-
                     // Job details section
                     Container(
                       padding:
@@ -629,9 +648,9 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
                         Icons.description),
                     SizedBox(height: 10),
                     buildTextField("Salary Range", salaryRangeController,
-                        Icons.attach_money, keyboardType: TextInputType.number),
+                        Icons.attach_money,
+                        keyboardType: TextInputType.number),
                     SizedBox(height: 10),
-
                     // Last date picker field
                     Container(
                       decoration: BoxDecoration(
@@ -665,7 +684,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
                       ),
                     ),
                     SizedBox(height: 20),
-
                     // Job Description Content
                     if (isLoading)
                       Center(
@@ -768,7 +786,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
                         ),
                       ),
                     SizedBox(height: 24),
-
                     // Action buttons
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -815,7 +832,7 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
 
   Widget buildTextField(
       String label, TextEditingController controller, IconData icon,
-      {TextInputType? keyboardType}) {
+      {TextInputType? keyboardType, bool readOnly = false}) {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -832,6 +849,7 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
       child: TextField(
         controller: controller,
         keyboardType: keyboardType ?? TextInputType.text,
+        readOnly: readOnly,
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(color: Color(0xFF6B7280)),
@@ -846,7 +864,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
   Widget buildDescriptionSection(
       String title, dynamic content, IconData icon, Color color) {
     if (content == null) return SizedBox.shrink();
-
     return Container(
       margin: EdgeInsets.symmetric(vertical: 12.0),
       decoration: BoxDecoration(
@@ -937,812 +954,6 @@ class _JobDescriptionScreenState extends State<JobTemplateScreen>
     );
   }
 }
-/*
-class JobAIScreen extends StatefulWidget {
-  @override
-  _JobAIScreenState createState() => _JobAIScreenState();
-}
-
-class _JobAIScreenState extends State<JobAIScreen>
-    with SingleTickerProviderStateMixin {
-  final TextEditingController companyNameController = TextEditingController();
-  final TextEditingController departmentController = TextEditingController();
-  final TextEditingController locationController = TextEditingController();
-  final TextEditingController jobTypeController = TextEditingController();
-  final TextEditingController contractTypeController = TextEditingController();
-  final TextEditingController salaryRangeController = TextEditingController();
-  final TextEditingController lastDateController = TextEditingController();
-  final TextEditingController aiGeneratedDescriptionController =
-      TextEditingController();
-
-  String? selectedJobTitle;
-  bool isLoading = false;
-  bool isDescriptionGenerated = false;
-
-  // Backend API URL
-  //final String backendApiUrl = dotenv.env['AI_JOB_D'] ?? '';
-  final String backendApiUrl = "http://localhost:8000";
-
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-
-  List<String> jobTitles = [
-    "Software Engineer",
-    "Product Manager",
-    "UX Designer",
-    "Data Scientist",
-    "Marketing Specialist"
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: 600),
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
-    );
-
-    _slideAnimation =
-        Tween<Offset>(begin: Offset(0, 0.3), end: Offset.zero).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOutQuint),
-    );
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  Future<void> generateJobDescription() async {
-    if (selectedJobTitle == null ||
-        companyNameController.text.isEmpty ||
-        departmentController.text.isEmpty ||
-        locationController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.white),
-              SizedBox(width: 10),
-              Text("Please fill required fields"),
-            ],
-          ),
-          backgroundColor: Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      isLoading = true;
-      aiGeneratedDescriptionController.clear();
-    });
-
-    try {
-      // Prepare data to send to backend
-      Map<String, dynamic> jobData = {
-        "job_title": selectedJobTitle,
-        "company_name": companyNameController.text,
-        "department": departmentController.text,
-        "location": locationController.text,
-        "job_type": jobTypeController.text,
-        "contract_type": contractTypeController.text,
-        "salary_range": salaryRangeController.text,
-        "last_date": lastDateController.text,
-      };
-
-      // Call backend API
-      var response = await http.post(
-        Uri.parse(backendApiUrl),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(jobData),
-      );
-
-      if (response.statusCode == 200) {
-        var jsonResponse = jsonDecode(response.body);
-        String generatedDescription = jsonResponse["description"];
-
-        setState(() {
-          aiGeneratedDescriptionController.text = generatedDescription;
-          isDescriptionGenerated = true;
-          _animationController.reset();
-          _animationController.forward();
-        });
-      } else {
-        throw Exception("Failed to generate job description: ${response.body}");
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error: $e"),
-          backgroundColor: Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-
-    setState(() {
-      isLoading = false;
-    });
-  }
-
-  void saveJobDetails() async {
-    if (companyNameController.text.isEmpty ||
-        departmentController.text.isEmpty ||
-        locationController.text.isEmpty ||
-        jobTypeController.text.isEmpty ||
-        contractTypeController.text.isEmpty ||
-        salaryRangeController.text.isEmpty ||
-        lastDateController.text.isEmpty ||
-        selectedJobTitle == null ||
-        aiGeneratedDescriptionController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.white),
-              SizedBox(width: 10),
-              Text("All fields must be filled"),
-            ],
-          ),
-          backgroundColor: Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-      return;
-    }
-    String recruiterId = FirebaseAuth.instance.currentUser!.uid;
-    Map<String, dynamic> jobDetails = {
-      "company_name": companyNameController.text,
-      "department": departmentController.text,
-      "location": locationController.text,
-      "job_type": jobTypeController.text,
-      "contract_type": contractTypeController.text,
-      "salary_range": salaryRangeController.text,
-      "last_date_to_apply": lastDateController.text,
-      "title": selectedJobTitle,
-      "description": aiGeneratedDescriptionController.text,
-      "recruiterId": recruiterId,
-    };
-
-    setState(() {
-      isLoading = true;
-    });
-
-    try {
-      // Check if the job exists in Firestore before adding/updating
-      var jobQuery = await FirebaseFirestore.instance
-          .collection("JobsInDraft")
-          .where("title", isEqualTo: selectedJobTitle)
-          .where("company_name", isEqualTo: companyNameController.text)
-          .get();
-
-      if (jobQuery.docs.isNotEmpty) {
-        // Update existing job
-        String jobId = jobQuery.docs.first.id;
-        await FirebaseFirestore.instance
-            .collection("JobsInDraft")
-            .doc(jobId)
-            .update(jobDetails);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 10),
-                Text("Job updated successfully"),
-              ],
-            ),
-            backgroundColor: Color(0xFF0D9488),
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-      } else {
-        // Save as a new job
-        await FirebaseFirestore.instance
-            .collection("JobsInDraft")
-            .add(jobDetails);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 10),
-                Text("Job saved successfully"),
-              ],
-            ),
-            backgroundColor: Color(0xFF0D9488),
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error saving job: $e"),
-          backgroundColor: Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-    }
-
-    setState(() {
-      isLoading = false;
-    });
-  }
-
-  Future<void> selectDate(BuildContext context) async {
-    DateTime? pickedDate = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2100),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Color(0xFF1E3A8A),
-              onPrimary: Colors.white,
-              onSurface: Colors.black,
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: Color(0xFF1E3A8A),
-              ),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (pickedDate != null) {
-      setState(() {
-        lastDateController.text =
-            "${pickedDate.day}/${pickedDate.month}/${pickedDate.year}";
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Theme(
-      data: appTheme,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            "AI Job Creator",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
-          ),
-          backgroundColor: Color(0xFF1E3A8A),
-          elevation: 0,
-          centerTitle: true,
-          actions: [
-            IconButton(
-              icon: Icon(Icons.lightbulb_outline),
-              onPressed: () {
-                // Show tips or help dialog
-              },
-            ),
-          ],
-        ),
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFFE6EFFE), Color(0xFFF9FAFB)],
-            ),
-          ),
-          child: SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // AI Header Banner with updated colors
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.symmetric(vertical: 15, horizontal: 20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF1E3A8A), Color(0xFF3151A6)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Color(0xFF1E3A8A).withOpacity(0.2),
-                          blurRadius: 10,
-                          offset: Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(Icons.smart_toy,
-                              color: Colors.white, size: 32),
-                        ),
-                        SizedBox(width: 15),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "AI-Powered Job Description",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                              SizedBox(height: 5),
-                              Text(
-                                "Fill in details and let AI craft the perfect job description",
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.9),
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  SizedBox(height: 25),
-
-                  // Main content card with updated styling
-                  Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Color(0xFF1E3A8A).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(Icons.work_outline,
-                                    color: Color(0xFF1E3A8A), size: 24),
-                              ),
-                              SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Job Details",
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1F2937),
-                                    ),
-                                  ),
-                                  Text(
-                                    "Fill in the required information",
-                                    style: TextStyle(
-                                      color: Color(0xFF6B7280),
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          Divider(height: 25, color: Color(0xFFE5E7EB)),
-
-                          // Two column layout for smaller fields
-                          Wrap(
-                            spacing: 15,
-                            runSpacing: 15,
-                            children: [
-                              Container(
-                                width: MediaQuery.of(context).size.width > 600
-                                    ? (MediaQuery.of(context).size.width -
-                                            100) /
-                                        2
-                                    : MediaQuery.of(context).size.width - 55,
-                                child: buildTextField(
-                                  "Company Name",
-                                  companyNameController,
-                                  Icons.business,
-                                  required: true,
-                                ),
-                              ),
-                              Container(
-                                width: MediaQuery.of(context).size.width > 600
-                                    ? (MediaQuery.of(context).size.width -
-                                            100) /
-                                        2
-                                    : MediaQuery.of(context).size.width - 55,
-                                child: buildTextField(
-                                  "Department",
-                                  departmentController,
-                                  Icons.category,
-                                  required: true,
-                                ),
-                              ),
-                              Container(
-                                width: MediaQuery.of(context).size.width > 600
-                                    ? (MediaQuery.of(context).size.width -
-                                            100) /
-                                        2
-                                    : MediaQuery.of(context).size.width - 55,
-                                child: buildTextField(
-                                  "Location",
-                                  locationController,
-                                  Icons.location_on,
-                                  required: true,
-                                ),
-                              ),
-                              Container(
-                                width: MediaQuery.of(context).size.width > 600
-                                    ? (MediaQuery.of(context).size.width -
-                                            100) /
-                                        2
-                                    : MediaQuery.of(context).size.width - 55,
-                                child: buildTextField(
-                                  "Job Type",
-                                  jobTypeController,
-                                  Icons.work,
-                                ),
-                              ),
-                              Container(
-                                width: MediaQuery.of(context).size.width > 600
-                                    ? (MediaQuery.of(context).size.width -
-                                            100) /
-                                        2
-                                    : MediaQuery.of(context).size.width - 55,
-                                child: buildTextField(
-                                  "Contract Type",
-                                  contractTypeController,
-                                  Icons.description,
-                                ),
-                              ),
-                              Container(
-                                width: MediaQuery.of(context).size.width > 600
-                                    ? (MediaQuery.of(context).size.width -
-                                            100) /
-                                        2
-                                    : MediaQuery.of(context).size.width - 55,
-                                child: buildTextField(
-                                  "Salary Range",
-                                  salaryRangeController,
-                                  Icons.monetization_on,
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          SizedBox(height: 15),
-
-                          // Date picker field
-                          GestureDetector(
-                            onTap: () => selectDate(context),
-                            child: AbsorbPointer(
-                              child: buildTextField(
-                                "Last Date to Apply",
-                                lastDateController,
-                                Icons.calendar_today,
-                                suffix: Icon(Icons.arrow_drop_down,
-                                    color: Color(0xFF1E3A8A)),
-                              ),
-                            ),
-                          ),
-
-                          SizedBox(height: 15),
-
-                          // Job title dropdown with updated styling
-                          Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              color: Colors.white,
-                              border: Border.all(color: Color(0xFFE5E7EB)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 5,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButtonFormField<String>(
-                                value: selectedJobTitle,
-                                decoration: InputDecoration(
-                                  prefixIcon: Icon(Icons.work_outline,
-                                      color: Color(0xFF1E3A8A)),
-                                  labelText: "Select Job Title",
-                                  labelStyle:
-                                      TextStyle(color: Color(0xFF6B7280)),
-                                  border: InputBorder.none,
-                                ),
-                                items: jobTitles
-                                    .map((title) => DropdownMenuItem(
-                                        value: title, child: Text(title)))
-                                    .toList(),
-                                onChanged: (value) {
-                                  setState(() {
-                                    selectedJobTitle = value;
-                                  });
-                                },
-                                icon: Icon(Icons.arrow_drop_down,
-                                    color: Color(0xFF1E3A8A)),
-                                isExpanded: true,
-                              ),
-                            ),
-                          ),
-
-                          SizedBox(height: 25),
-
-                          // AI Generation button with updated styling
-                          Center(
-                            child: isLoading
-                                ? CircularProgressIndicator(
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        Color(0xFF1E3A8A)),
-                                  )
-                                : Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(30),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Color(0xFF1E3A8A)
-                                              .withOpacity(0.3),
-                                          blurRadius: 10,
-                                          offset: Offset(0, 4),
-                                          spreadRadius: -2,
-                                        ),
-                                      ],
-                                    ),
-                                    child: ElevatedButton.icon(
-                                      icon: Icon(Icons.auto_awesome),
-                                      label: Text("Generate with AI"),
-                                      onPressed: generateJobDescription,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Color(0xFF1E3A8A),
-                                        foregroundColor: Colors.white,
-                                        padding: EdgeInsets.symmetric(
-                                            horizontal: 24, vertical: 14),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(30),
-                                        ),
-                                        elevation: 0,
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(height: 20),
-
-                  // AI Generated Description Card with updated styling
-                  if (isDescriptionGenerated)
-                    SlideTransition(
-                      position: _slideAnimation,
-                      child: FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: Card(
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(20),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            Color(0xFF0D9488).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(Icons.description,
-                                          color: Color(0xFF0D9488), size: 24),
-                                    ),
-                                    SizedBox(width: 12),
-                                    Text(
-                                      "AI-Generated Description",
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF1F2937),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Divider(height: 25, color: Color(0xFFE5E7EB)),
-                                Container(
-                                  padding: EdgeInsets.all(15),
-                                  decoration: BoxDecoration(
-                                    color: Color(0xFFF9FAFB),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border:
-                                        Border.all(color: Color(0xFFE5E7EB)),
-                                  ),
-                                  child: TextField(
-                                    controller:
-                                        aiGeneratedDescriptionController,
-                                    maxLines: 15,
-                                    decoration: InputDecoration(
-                                      hintText:
-                                          "AI will generate the job description here...",
-                                      border: InputBorder.none,
-                                      hintStyle:
-                                          TextStyle(color: Color(0xFF9CA3AF)),
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      height: 1.5,
-                                      color: Color(0xFF1F2937),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  SizedBox(height: 25),
-
-                  // Action buttons with updated styling
-                  isDescriptionGenerated
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            ElevatedButton.icon(
-                              icon: Icon(Icons.arrow_back),
-                              label: Text("Back"),
-                              onPressed: () => Navigator.pop(context),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: Color(0xFF1F2937),
-                                padding: EdgeInsets.symmetric(
-                                    horizontal: 20, vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                                elevation: 0,
-                                side: BorderSide(color: Color(0xFFE5E7EB)),
-                              ),
-                            ),
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(30),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Color(0xFF0D9488).withOpacity(0.3),
-                                    blurRadius: 10,
-                                    offset: Offset(0, 4),
-                                    spreadRadius: -2,
-                                  ),
-                                ],
-                              ),
-                              child: ElevatedButton.icon(
-                                icon: Icon(Icons.save),
-                                label: Text("Save Job"),
-                                onPressed: saveJobDetails,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Color(0xFF0D9488),
-                                  foregroundColor: Colors.white,
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: 20, vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                  elevation: 0,
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : Center(
-                          child: ElevatedButton.icon(
-                            icon: Icon(Icons.arrow_back),
-                            label: Text("Back"),
-                            onPressed: () => Navigator.pop(context),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Color(0xFF1F2937),
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                              elevation: 0,
-                              side: BorderSide(color: Color(0xFFE5E7EB)),
-                            ),
-                          ),
-                        ),
-
-                  SizedBox(height: 30),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget buildTextField(
-      String label, TextEditingController controller, IconData icon,
-      {bool required = false, Widget? suffix}) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.white,
-        border: Border.all(color: Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 5,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: required ? "$label *" : label,
-          labelStyle: TextStyle(color: Color(0xFF6B7280)),
-          prefixIcon: Icon(icon, color: Color(0xFF1E3A8A)),
-          suffixIcon: suffix,
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-        ),
-        style: TextStyle(color: Color(0xFF1F2937)),
-      ),
-    );
-  }
-}
-*/
 
 class JobAIScreen extends StatefulWidget {
   @override
@@ -1759,16 +970,15 @@ class _JobAIScreenState extends State<JobAIScreen>
   final TextEditingController salaryRangeController = TextEditingController();
   final TextEditingController lastDateController = TextEditingController();
   final TextEditingController jobTitleController = TextEditingController();
-
   bool isLoading = false;
   final String togetherAIKey =
       "tgp_v1_FS-KODkfQrqoo1I6REkwf6X3ew1zYrDuW6kOzqhTKyA";
-
   late AnimationController _animationController;
 
   @override
   void initState() {
     super.initState();
+    _autofillCompanyName();
     _animationController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 600),
@@ -1811,16 +1021,12 @@ class _JobAIScreenState extends State<JobAIScreen>
       );
       return;
     }
-
     setState(() {
       isLoading = true;
     });
-
     String prompt = """
 Generate a professional job description for the role of ${jobTitleController.text.trim()} in valid JSON format.
-
 Generate the JSON object directly with the following keys at the top level of the object, without any additional wrapper like "description":
-
 {
   "position_summary": "A detailed summary of the position...",
   "responsibilities": [
@@ -1850,17 +1056,14 @@ Generate the JSON object directly with the following keys at the top level of th
     "Benefit 3"
   ]
 }
-
 Please ensure:
 - Output directly the nested map with these exact keys, no outer "description" or other wrappers.
 - Do not escape or stringify the JSON.
 - Include relevant, realistic content for a ${jobTitleController.text.trim()} role.
 - The output must be valid, indented, and directly parsable JSON.
 """;
-
     try {
       final String apiUrl = "https://api.together.xyz/v1/chat/completions";
-
       var response = await http.post(
         Uri.parse(apiUrl),
         headers: {
@@ -1881,20 +1084,16 @@ Please ensure:
           "temperature": 0.7
         }),
       );
-
       if (response.statusCode == 200) {
         var jsonResponse = jsonDecode(response.body);
         String generatedContent =
             jsonResponse["choices"][0]["message"]["content"];
-
         // Extract just the JSON part
         RegExp jsonRegex = RegExp(r'{[\s\S]*}');
         Match? match = jsonRegex.firstMatch(generatedContent);
-
         if (match != null) {
           String jsonStr = match.group(0)!;
           var parsedJson = jsonDecode(jsonStr);
-
           Map<String, dynamic> previewData = {
             "title": jobTitleController.text.trim(),
             "company_name": companyNameController.text.trim(),
@@ -1906,7 +1105,6 @@ Please ensure:
             "last_date_to_apply_str": lastDateController.text.trim(),
             "description": parsedJson,
           };
-
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => JobDescriptionPreviewScreen(
@@ -1929,7 +1127,6 @@ Please ensure:
         ),
       );
     }
-
     setState(() {
       isLoading = false;
     });
@@ -1959,12 +1156,38 @@ Please ensure:
         );
       },
     );
-
     if (pickedDate != null) {
       setState(() {
         lastDateController.text =
             "${pickedDate.day}/${pickedDate.month}/${pickedDate.year}";
       });
+    }
+  }
+
+  Future<void> _autofillCompanyName() async {
+    try {
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        return;
+      }
+      String recruiterId = currentUser.uid;
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('verificationRequests')
+          .where('userId', isEqualTo: recruiterId)
+          .limit(1)
+          .get();
+      if (querySnapshot.docs.isNotEmpty) {
+        Map<String, dynamic> data =
+            querySnapshot.docs.first.data() as Map<String, dynamic>;
+        String companyName = data['companyName'] ?? '';
+        if (companyName.isNotEmpty) {
+          setState(() {
+            companyNameController.text = companyName;
+          });
+        }
+      }
+    } catch (e) {
+      print("Error autofilling company name: $e");
     }
   }
 
@@ -2053,9 +1276,7 @@ Please ensure:
                       ],
                     ),
                   ),
-
                   SizedBox(height: 25),
-
                   // Main content card
                   Card(
                     elevation: 2,
@@ -2102,7 +1323,6 @@ Please ensure:
                             ],
                           ),
                           Divider(height: 25, color: Color(0xFFE5E7EB)),
-
                           // Two column layout for fields
                           Wrap(
                             spacing: 15,
@@ -2132,6 +1352,8 @@ Please ensure:
                                   companyNameController,
                                   Icons.business,
                                   required: true,
+                                  readOnly:
+                                      companyNameController.text.isNotEmpty,
                                 ),
                               ),
                               Container(
@@ -2199,9 +1421,7 @@ Please ensure:
                               ),
                             ],
                           ),
-
                           SizedBox(height: 15),
-
                           // Date picker field
                           GestureDetector(
                             onTap: () => selectDate(context),
@@ -2215,9 +1435,7 @@ Please ensure:
                               ),
                             ),
                           ),
-
                           SizedBox(height: 25),
-
                           // AI Generation button
                           Center(
                             child: isLoading
@@ -2260,9 +1478,7 @@ Please ensure:
                       ),
                     ),
                   ),
-
                   SizedBox(height: 30),
-
                   // Action button
                   Center(
                     child: ElevatedButton.icon(
@@ -2282,7 +1498,6 @@ Please ensure:
                       ),
                     ),
                   ),
-
                   SizedBox(height: 30),
                 ],
               ),
@@ -2295,7 +1510,10 @@ Please ensure:
 
   Widget buildTextField(
       String label, TextEditingController controller, IconData icon,
-      {bool required = false, Widget? suffix, TextInputType? keyboardType}) {
+      {bool required = false,
+      Widget? suffix,
+      TextInputType? keyboardType,
+      bool readOnly = false}) {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -2312,6 +1530,7 @@ Please ensure:
       child: TextField(
         controller: controller,
         keyboardType: keyboardType,
+        readOnly: readOnly,
         decoration: InputDecoration(
           labelText: required ? "$label *" : label,
           labelStyle: TextStyle(color: Color(0xFF6B7280)),
@@ -2328,7 +1547,6 @@ Please ensure:
 
 class JobDescriptionPreviewScreen extends StatefulWidget {
   final Map<String, dynamic> previewData;
-
   const JobDescriptionPreviewScreen({
     Key? key,
     required this.previewData,
@@ -2343,7 +1561,6 @@ class _JobDescriptionPreviewScreenState
     extends State<JobDescriptionPreviewScreen> {
   bool isLoading = false;
   bool isEditing = false;
-
   late Map<String, dynamic> editableDesc;
   late TextEditingController summaryController;
   late TextEditingController responsibilitiesController;
@@ -2362,38 +1579,32 @@ class _JobDescriptionPreviewScreenState
     super.initState();
     editableDesc =
         Map<String, dynamic>.from(widget.previewData["description"] ?? {});
-
     summaryController =
         TextEditingController(text: editableDesc["position_summary"] ?? "");
-
     final List<dynamic> respList = editableDesc["responsibilities"] ?? [];
     responsibilitiesController = TextEditingController(
       text: (respList.isEmpty
           ? ''
           : respList.map((dynamic r) => '• ${r.toString()}').join('\n')),
     );
-
     final List<dynamic> requiredList = editableDesc["required_skills"] ?? [];
     requiredSkillsController = TextEditingController(
       text: (requiredList.isEmpty
           ? ''
           : requiredList.map((dynamic r) => '• ${r.toString()}').join('\n')),
     );
-
     final List<dynamic> preferredList = editableDesc["preferred_skills"] ?? [];
     preferredSkillsController = TextEditingController(
       text: (preferredList.isEmpty
           ? ''
           : preferredList.map((dynamic r) => '• ${r.toString()}').join('\n')),
     );
-
     final List<dynamic> offerList = editableDesc["what_we_offer"] ?? [];
     whatWeOfferController = TextEditingController(
       text: (offerList.isEmpty
           ? ''
           : offerList.map((dynamic r) => '• ${r.toString()}').join('\n')),
     );
-
     // Initialize FocusNodes for list sections
     responsibilitiesFocus = FocusNode(
       onKeyEvent: (node, event) =>
@@ -2411,7 +1622,6 @@ class _JobDescriptionPreviewScreenState
       onKeyEvent: (node, event) =>
           _onBulletKeyEvent(event, whatWeOfferController),
     );
-
     technicalControllers = {};
     technicalFocusNodes = {};
     final Map<String, dynamic> tech =
@@ -2457,47 +1667,6 @@ class _JobDescriptionPreviewScreenState
     });
   }
 
-  void _addTechnicalCategory() {
-    TextEditingController nameController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text("Add Technical Category"),
-        content: TextField(
-          controller: nameController,
-          decoration: InputDecoration(
-            hintText: "e.g., Programming Languages",
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () {
-              String name = nameController.text.trim();
-              if (name.isNotEmpty && !technicalControllers.containsKey(name)) {
-                setState(() {
-                  TextEditingController newCtrl =
-                      TextEditingController(text: '');
-                  technicalControllers[name] = newCtrl;
-                  FocusNode newFocus = FocusNode(
-                    onKeyEvent: (node, event) =>
-                        _onBulletKeyEvent(event, newCtrl),
-                  );
-                  technicalFocusNodes[name] = newFocus;
-                });
-              }
-              Navigator.pop(ctx);
-            },
-            child: Text("Add"),
-          ),
-        ],
-      ),
-    ).then((_) => nameController.dispose());
-  }
-
   void _removeTechnicalCategory(String category) {
     setState(() {
       technicalControllers[category]?.dispose();
@@ -2512,7 +1681,6 @@ class _JobDescriptionPreviewScreenState
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.enter &&
         !HardwareKeyboard.instance.isShiftPressed) {
-      // Fixed: Use HardwareKeyboard.instance.isShiftPressed
       final TextEditingValue currentText = controller.value;
       final int cursorPos = currentText.selection.baseOffset;
       final String insertText = '\n• ';
@@ -2520,12 +1688,10 @@ class _JobDescriptionPreviewScreenState
           insertText +
           currentText.text.substring(cursorPos);
       final int newCursorPos = cursorPos + insertText.length;
-
       controller.value = TextEditingValue(
         text: newText,
         selection: TextSelection.collapsed(offset: newCursorPos),
       );
-
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -2542,16 +1708,12 @@ class _JobDescriptionPreviewScreenState
   void saveJobDetails() async {
     // Update editableDesc from controllers
     editableDesc["position_summary"] = summaryController.text.trim();
-
     editableDesc["responsibilities"] =
         _parseBulletedText(responsibilitiesController.text);
-
     editableDesc["required_skills"] =
         _parseBulletedText(requiredSkillsController.text);
-
     editableDesc["preferred_skills"] =
         _parseBulletedText(preferredSkillsController.text);
-
     final Map<String, List<String>> updatedTech = <String, List<String>>{};
     technicalControllers.forEach((key, ctrl) {
       List<String> skills = _parseBulletedText(ctrl.text);
@@ -2560,10 +1722,8 @@ class _JobDescriptionPreviewScreenState
       }
     });
     editableDesc["technical_skills"] = updatedTech;
-
     editableDesc["what_we_offer"] =
         _parseBulletedText(whatWeOfferController.text);
-
     String title = widget.previewData["title"] ?? "";
     String companyName = widget.previewData["company_name"] ?? "";
     String department = widget.previewData["department"] ?? "";
@@ -2572,7 +1732,6 @@ class _JobDescriptionPreviewScreenState
     String contractType = widget.previewData["contract_type"] ?? "";
     String salaryRange = widget.previewData["salary_range"] ?? "";
     String lastDateStr = widget.previewData["last_date_to_apply_str"] ?? "";
-
     if (title.isEmpty ||
         companyName.isEmpty ||
         department.isEmpty ||
@@ -2594,15 +1753,12 @@ class _JobDescriptionPreviewScreenState
       );
       return;
     }
-
     Map<String, dynamic> descriptionContent = editableDesc;
-
     // Handle possible extra "description" wrapper
     if (descriptionContent.containsKey('description')) {
       descriptionContent =
           descriptionContent['description'] as Map<String, dynamic>;
     }
-
     // Ensure all keys exist even if empty
     if (!descriptionContent.containsKey('position_summary')) {
       descriptionContent['position_summary'] = '';
@@ -2622,7 +1778,6 @@ class _JobDescriptionPreviewScreenState
     if (!descriptionContent.containsKey('what_we_offer')) {
       descriptionContent['what_we_offer'] = [];
     }
-
     // Parse last_date_to_apply to Timestamp (allow null if empty)
     Timestamp? lastDateTimestamp;
     if (lastDateStr.isNotEmpty) {
@@ -2655,7 +1810,6 @@ class _JobDescriptionPreviewScreenState
         return;
       }
     }
-
     String recruiterId = FirebaseAuth.instance.currentUser!.uid;
     Map<String, dynamic> jobDetails = {
       "company_name": companyName,
@@ -2670,11 +1824,9 @@ class _JobDescriptionPreviewScreenState
       "recruiterId": recruiterId,
       "posted_on": FieldValue.serverTimestamp(),
     };
-
     setState(() {
       isLoading = true;
     });
-
     try {
       var jobQuery = await FirebaseFirestore.instance
           .collection("JobsPosted")
@@ -2687,14 +1839,12 @@ class _JobDescriptionPreviewScreenState
           .where("salary_range", isEqualTo: salaryRange)
           .where("last_date_to_apply", isEqualTo: lastDateTimestamp)
           .get();
-
       if (jobQuery.docs.isNotEmpty) {
         String jobId = jobQuery.docs.first.id;
         await FirebaseFirestore.instance
             .collection("JobsPosted")
             .doc(jobId)
             .update(jobDetails);
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -2714,7 +1864,6 @@ class _JobDescriptionPreviewScreenState
         await FirebaseFirestore.instance
             .collection("JobsPosted")
             .add(jobDetails);
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -2744,7 +1893,6 @@ class _JobDescriptionPreviewScreenState
         ),
       );
     }
-
     setState(() {
       isLoading = false;
     });
@@ -2919,7 +2067,6 @@ class _JobDescriptionPreviewScreenState
 
   Widget _buildTechnicalSection() {
     List<String> categories = technicalControllers.keys.toList();
-
     if (isEditing) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3002,22 +2149,6 @@ class _JobDescriptionPreviewScreenState
                 ),
               ),
             ),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              icon: Icon(Icons.add),
-              label: Text("Add Technical Category"),
-              onPressed: _addTechnicalCategory,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF1E3A8A).withOpacity(0.1),
-                foregroundColor: Color(0xFF1E3A8A),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-          ),
         ],
       );
     } else {
@@ -3186,9 +2317,7 @@ class _JobDescriptionPreviewScreenState
                       ],
                     ),
                   ),
-
                   SizedBox(height: 25),
-
                   // Description Card
                   Card(
                     elevation: 2,
@@ -3244,9 +2373,7 @@ class _JobDescriptionPreviewScreenState
                       ),
                     ),
                   ),
-
                   SizedBox(height: 25),
-
                   // Action buttons
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3302,7 +2429,6 @@ class _JobDescriptionPreviewScreenState
                             ),
                     ],
                   ),
-
                   SizedBox(height: 30),
                 ],
               ),

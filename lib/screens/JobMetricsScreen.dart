@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 class JobMetricsScreen extends StatefulWidget {
@@ -13,25 +14,31 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
   bool isLoading = false;
   int totalApplications = 0;
   int scheduledInterviews = 0;
+  int conductedInterviews = 0;
+  int hiredCandidates = 0;
   int offersSent = 0;
-  int offersAccepted = 0;
-  int offersRejected = 0;
 
   @override
   Widget build(BuildContext context) {
+    final String recruiterId = FirebaseAuth.instance.currentUser!.uid;
     return Scaffold(
-      backgroundColor: Color(0xFFF0F9FF),
+      backgroundColor: Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(
           'Job Analytics',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+            color: Colors.white,
+          ),
         ),
-        backgroundColor: Color(0xFF0EA5E9),
+        backgroundColor: Color(0xFF3B82F6),
         elevation: 0,
+        iconTheme: IconThemeData(color: Colors.white),
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF0EA5E9), Color(0xFF0284C7)],
+              colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -40,56 +47,53 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
       ),
       body: Column(
         children: [
-          // Header Section
+          // Header Section with Gradient
           Container(
             width: double.infinity,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF0EA5E9), Color(0xFF0284C7)],
+                colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(30),
-                bottomRight: Radius.circular(30),
-              ),
             ),
             child: Padding(
-              padding: EdgeInsets.fromLTRB(24, 16, 24, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Container(
-                        padding: EdgeInsets.all(12),
+                        padding: EdgeInsets.all(10),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
-                          Icons.analytics,
+                          Icons.analytics_rounded,
                           color: Colors.white,
-                          size: 28,
+                          size: 24,
                         ),
                       ),
-                      SizedBox(width: 16),
+                      SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Track Your Jobs',
+                              'Performance Insights',
                               style: TextStyle(
-                                fontSize: 22,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
                             ),
+                            SizedBox(height: 2),
                             Text(
-                              'Monitor performance & insights',
+                              'Monitor recruitment metrics',
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 13,
                                 color: Colors.white.withOpacity(0.9),
                               ),
                             ),
@@ -98,176 +102,146 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-          ),
+                  SizedBox(height: 20),
 
-          SizedBox(height: 24),
-
-          // Job Selection Card
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0xFF0EA5E9).withOpacity(0.1),
-                    blurRadius: 20,
-                    offset: Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(8),
+                  // Job Dropdown
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('JobsPosted')
+                        .where('recruiterId', isEqualTo: recruiterId)
+                        .orderBy('posted_on', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return Container(
+                          height: 56,
                           decoration: BoxDecoration(
-                            color: Color(0xFF10B981).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(10),
+                            color: Colors.white.withOpacity(0.95),
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                          child: Icon(
-                            Icons.work_outline,
-                            color: Color(0xFF10B981),
-                            size: 20,
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Select Job Position',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 16),
-                    StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('JobsPosted')
-                          .orderBy('postedDate', descending: true)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
+                          child: Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
                               child: CircularProgressIndicator(
+                                strokeWidth: 2,
                                 valueColor: AlwaysStoppedAnimation<Color>(
-                                    Color(0xFF0EA5E9)),
+                                    Color(0xFF3B82F6)),
                               ),
                             ),
-                          );
-                        }
+                          ),
+                        );
+                      }
 
-                        final jobs = snapshot.data!.docs;
+                      final jobs = snapshot.data!.docs;
 
-                        if (jobs.isEmpty) {
-                          return Container(
-                            padding: EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: Color(0xFFF0F9FF),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Color(0xFF0EA5E9).withOpacity(0.2),
+                      if (jobs.isEmpty) {
+                        return Container(
+                          padding: EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.95),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline,
+                                  color: Color(0xFF3B82F6), size: 20),
+                              SizedBox(width: 10),
+                              Text(
+                                'No jobs posted yet',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF1E293B),
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.95),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 10,
+                              offset: Offset(0, 3),
                             ),
-                            child: Center(
-                              child: Column(
+                          ],
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            value: selectedJobId,
+                            hint: Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 2),
+                              child: Row(
                                 children: [
-                                  Icon(
-                                    Icons.work_off_outlined,
-                                    size: 48,
-                                    color: Color(0xFF94A3B8),
-                                  ),
-                                  SizedBox(height: 12),
+                                  Icon(Icons.search,
+                                      color: Color(0xFF64748B), size: 18),
+                                  SizedBox(width: 10),
                                   Text(
-                                    'No jobs posted yet',
+                                    'Select job position',
                                     style: TextStyle(
-                                      fontSize: 16,
                                       color: Color(0xFF64748B),
+                                      fontSize: 14,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          );
-                        }
-
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Color(0xFF0EA5E9).withOpacity(0.2),
+                            icon: Padding(
+                              padding: EdgeInsets.only(right: 14),
+                              child: Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: Color(0xFF3B82F6),
+                                size: 24,
+                              ),
                             ),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              isExpanded: true,
-                              value: selectedJobId,
-                              hint: Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 16),
-                                child: Text(
-                                  'Choose a job to view metrics',
-                                  style: TextStyle(
-                                    color: Color(0xFF64748B),
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ),
-                              icon: Padding(
-                                padding: EdgeInsets.only(right: 16),
-                                child: Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                  color: Color(0xFF0EA5E9),
-                                ),
-                              ),
-                              items: jobs.map((doc) {
-                                final data = doc.data() as Map<String, dynamic>;
-                                return DropdownMenuItem<String>(
-                                  value: doc.id,
-                                  child: Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 16),
-                                    child: Text(
-                                      data['jobTitle'] ?? 'Untitled Job',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500,
-                                        color: Color(0xFF1E293B),
-                                      ),
+                            dropdownColor: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            items: jobs.map((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final title = data['title'] ?? 'Untitled Job';
+                              final location =
+                                  data['location'] ?? 'Not specified';
+                              return DropdownMenuItem<String>(
+                                value: doc.id,
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 8),
+                                  child: Text(
+                                    '$title ($location)',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1E293B),
                                     ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
                                   ),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                if (value != null) {
-                                  _loadJobMetrics(value);
-                                }
-                              },
-                            ),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                _loadJobMetrics(value);
+                              }
+                            },
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ),
-
-          SizedBox(height: 24),
 
           // Metrics Display
           if (isLoading)
@@ -277,15 +251,17 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     CircularProgressIndicator(
+                      strokeWidth: 3,
                       valueColor:
-                          AlwaysStoppedAnimation<Color>(Color(0xFF0EA5E9)),
+                          AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
                     ),
                     SizedBox(height: 16),
                     Text(
-                      'Loading metrics...',
+                      'Loading analytics...',
                       style: TextStyle(
                         color: Color(0xFF64748B),
-                        fontSize: 16,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -295,16 +271,29 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
           else if (selectedJobData != null)
             Expanded(
               child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: 24),
+                padding: EdgeInsets.all(20),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Job Info Card
                     _buildJobInfoCard(),
                     SizedBox(height: 20),
 
+                    // Section Header
+                    Padding(
+                      padding: EdgeInsets.only(left: 4, bottom: 16),
+                      child: Text(
+                        'Recruitment Pipeline',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                    ),
+
                     // Metrics Grid
                     _buildMetricsGrid(),
-                    SizedBox(height: 24),
                   ],
                 ),
               ),
@@ -318,30 +307,30 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
                     Container(
                       padding: EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: Color(0xFFF0F9FF),
+                        color: Color(0xFF3B82F6).withOpacity(0.1),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        Icons.bar_chart_rounded,
-                        size: 64,
-                        color: Color(0xFF0EA5E9),
+                        Icons.analytics_outlined,
+                        size: 60,
+                        color: Color(0xFF3B82F6),
                       ),
                     ),
-                    SizedBox(height: 24),
+                    SizedBox(height: 20),
                     Text(
-                      'Select a job to view metrics',
+                      'No Job Selected',
                       style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF475569),
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
                       ),
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Track applications, interviews & offers',
+                      'Select a position to view analytics',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Color(0xFF94A3B8),
+                        color: Color(0xFF64748B),
                       ),
                     ),
                   ],
@@ -354,74 +343,115 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
   }
 
   Widget _buildJobInfoCard() {
-    final postedDate = selectedJobData!['postedDate'] as Timestamp?;
-    final lastDate = selectedJobData!['lastDateToApply'] as Timestamp?;
+    final postedDate = selectedJobData!['posted_on'] as Timestamp?;
+    final lastDate = selectedJobData!['last_date_to_apply'] as Timestamp?;
 
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF10B981), Color(0xFF059669)],
+          colors: [Color(0xFF0D9488), Color(0xFF0D9488).withOpacity(0.9)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Color(0xFF10B981).withOpacity(0.3),
-            blurRadius: 20,
-            offset: Offset(0, 8),
+            color: Color(0xFF0D9488).withOpacity(0.25),
+            blurRadius: 15,
+            offset: Offset(0, 6),
           ),
         ],
       ),
       child: Padding(
-        padding: EdgeInsets.all(24),
+        padding: EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  padding: EdgeInsets.all(12),
+                  padding: EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    Icons.business_center,
+                    Icons.work_rounded,
                     color: Colors.white,
-                    size: 24,
+                    size: 22,
                   ),
                 ),
-                SizedBox(width: 16),
+                SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    selectedJobData!['jobTitle'] ?? 'Job Title',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedJobData!['title'] ?? 'Job Title',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            color: Colors.white.withOpacity(0.9),
+                            size: 14,
+                          ),
+                          SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              selectedJobData!['location'] ?? 'Not specified',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withOpacity(0.9),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 20),
-            Divider(color: Colors.white.withOpacity(0.3), height: 1),
-            SizedBox(height: 20),
-            _buildJobInfoRow(
-              Icons.calendar_today,
-              'Posted Date',
-              postedDate != null
-                  ? DateFormat('dd MMM yyyy').format(postedDate.toDate())
-                  : 'N/A',
+            SizedBox(height: 18),
+            Container(
+              height: 1,
+              color: Colors.white.withOpacity(0.3),
             ),
             SizedBox(height: 16),
-            _buildJobInfoRow(
-              Icons.event_busy,
-              'Last Date to Apply',
-              lastDate != null
-                  ? DateFormat('dd MMM yyyy').format(lastDate.toDate())
-                  : 'N/A',
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDateInfo(
+                    'Posted',
+                    postedDate != null
+                        ? DateFormat('dd MMM yyyy').format(postedDate.toDate())
+                        : 'N/A',
+                    Icons.calendar_today_rounded,
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 45,
+                  color: Colors.white.withOpacity(0.3),
+                ),
+                Expanded(
+                  child: _buildDateInfo(
+                    'Deadline',
+                    lastDate != null
+                        ? DateFormat('dd MMM yyyy').format(lastDate.toDate())
+                        : 'N/A',
+                    Icons.event_busy_rounded,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -429,33 +459,28 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
     );
   }
 
-  Widget _buildJobInfoRow(IconData icon, String label, String value) {
-    return Row(
+  Widget _buildDateInfo(String label, String value, IconData icon) {
+    return Column(
       children: [
-        Icon(icon, color: Colors.white.withOpacity(0.9), size: 20),
-        SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.white.withOpacity(0.8),
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ],
+        Icon(icon, color: Colors.white, size: 18),
+        SizedBox(height: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.white.withOpacity(0.85),
+            fontWeight: FontWeight.w500,
           ),
+        ),
+        SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+          textAlign: TextAlign.center,
         ),
       ],
     );
@@ -464,174 +489,106 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
   Widget _buildMetricsGrid() {
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildMetricCard(
-                'Total Applications',
-                totalApplications.toString(),
-                Icons.person_search,
-                Color(0xFF0EA5E9),
-                Color(0xFFE0F2FE),
-              ),
-            ),
-            SizedBox(width: 16),
-            Expanded(
-              child: _buildMetricCard(
-                'Interviews',
-                scheduledInterviews.toString(),
-                Icons.event_available,
-                Color(0xFF8B5CF6),
-                Color(0xFFF3E8FF),
-              ),
-            ),
-          ],
+        _buildMetricCard(
+          'Total Applications',
+          totalApplications.toString(),
+          Icons.people_outline_rounded,
+          Color(0xFF3B82F6),
+          'Candidates applied',
         ),
-        SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildMetricCard(
-                'Offers Sent',
-                offersSent.toString(),
-                Icons.mail_outline,
-                Color(0xFFF59E0B),
-                Color(0xFFFEF3C7),
-              ),
-            ),
-            SizedBox(width: 16),
-            Expanded(
-              child: _buildMetricCard(
-                'Accepted',
-                offersAccepted.toString(),
-                Icons.check_circle_outline,
-                Color(0xFF10B981),
-                Color(0xFFD1FAE5),
-              ),
-            ),
-          ],
+        SizedBox(height: 12),
+        _buildMetricCard(
+          'Scheduled Interviews',
+          scheduledInterviews.toString(),
+          Icons.calendar_month_rounded,
+          Color(0xFF1D4ED8),
+          'Interviews scheduled',
         ),
-        SizedBox(height: 16),
-        _buildFullWidthMetricCard(
-          'Offers Rejected',
-          offersRejected.toString(),
-          Icons.cancel_outlined,
-          Color(0xFFEF4444),
-          Color(0xFFFEE2E2),
+        SizedBox(height: 12),
+        _buildMetricCard(
+          'Conducted Interviews',
+          conductedInterviews.toString(),
+          Icons.task_alt_rounded,
+          Color(0xFF0D9488),
+          'Interviews completed',
+        ),
+        SizedBox(height: 12),
+        _buildMetricCard(
+          'Job Offers Sent',
+          offersSent.toString(),
+          Icons.mail_outline_rounded,
+          Color(0xFF6366F1),
+          'Offers issued',
+        ),
+        SizedBox(height: 12),
+        _buildMetricCard(
+          'Hired Candidates',
+          hiredCandidates.toString(),
+          Icons.verified_rounded,
+          Color(0xFF059669),
+          'Successfully hired',
         ),
       ],
     );
   }
 
-  Widget _buildMetricCard(String title, String value, IconData icon,
-      Color iconColor, Color bgColor) {
+  Widget _buildMetricCard(
+      String title, String value, IconData icon, Color color, String subtitle) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.15), width: 1),
         boxShadow: [
           BoxShadow(
-            color: iconColor.withOpacity(0.1),
-            blurRadius: 20,
-            offset: Offset(0, 4),
+            color: color.withOpacity(0.08),
+            blurRadius: 10,
+            offset: Offset(0, 3),
           ),
         ],
       ),
       child: Padding(
-        padding: EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                color: iconColor,
-                size: 24,
-              ),
-            ),
-            SizedBox(height: 16),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Color(0xFF64748B),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFullWidthMetricCard(String title, String value, IconData icon,
-      Color iconColor, Color bgColor) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: iconColor.withOpacity(0.1),
-            blurRadius: 20,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(20),
+        padding: EdgeInsets.all(16),
         child: Row(
           children: [
             Container(
-              padding: EdgeInsets.all(12),
+              padding: EdgeInsets.all(11),
               decoration: BoxDecoration(
-                color: bgColor,
+                color: color.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                icon,
-                color: iconColor,
-                size: 24,
-              ),
+              child: Icon(icon, color: color, size: 24),
             ),
-            SizedBox(width: 20),
+            SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
                     title,
                     style: TextStyle(
                       fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
                       color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
+              ),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: color,
               ),
             ),
           ],
@@ -674,18 +631,23 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
           .get();
       scheduledInterviews = interviewsSnapshot.docs.length;
 
-      // Count offers sent, accepted, and rejected
+      // Count conducted interviews (those with non-empty status)
+      conductedInterviews = interviewsSnapshot.docs.where((doc) {
+        final status = doc.data()['status'];
+        return status != null && status.toString().trim().isNotEmpty;
+      }).length;
+
+      // Count offers
       final offersSnapshot = await FirebaseFirestore.instance
           .collection('OfferLetters')
           .where('jobId', isEqualTo: jobId)
           .get();
 
       offersSent = offersSnapshot.docs.length;
-      offersAccepted = offersSnapshot.docs
+
+      // Hired candidates are those who accepted offers
+      hiredCandidates = offersSnapshot.docs
           .where((doc) => doc.data()['status'] == 'accepted')
-          .length;
-      offersRejected = offersSnapshot.docs
-          .where((doc) => doc.data()['status'] == 'rejected')
           .length;
 
       setState(() {
@@ -699,6 +661,11 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
         SnackBar(
           content: Text('Error loading metrics: $e'),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
