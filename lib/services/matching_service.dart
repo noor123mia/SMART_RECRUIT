@@ -7,17 +7,17 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // For Timestamp handling
 class MatchingService {
   final String apiUrl;
 
-  MatchingService({this.apiUrl = "http://192.168.10.8:7860"});
+  MatchingService({this.apiUrl = "http://192.168.10.2:7860"});
 
   Future<Map<String, dynamic>> matchCandidate(
       Map<String, dynamic> job, Map<String, dynamic> candidate) async {
     try {
       if (kDebugMode) {
         print('--- Match Candidate Called ---');
-        print('Job ID: ${job['id']}'); 
+        print('Job ID: ${job['id']}');
         print('Candidate Name: ${candidate['name']}');
       }
- 
+
       final sanitizedJob = _sanitizeDataForApi(job);
       final sanitizedCandidate = _sanitizeDataForApi(candidate);
 

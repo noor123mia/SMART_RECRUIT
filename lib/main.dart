@@ -6,16 +6,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_application_2/screens/AllCandidates.dart';
 import 'package:flutter_application_2/screens/CandidateApplicationScreen.dart';
 import 'package:flutter_application_2/screens/CandidateOffers.dart';
+import 'package:flutter_application_2/screens/CareerFitSuggestionsScreen.dart';
 import 'package:flutter_application_2/screens/InterviewManagementScreen.dart';
 import 'package:flutter_application_2/screens/InterviewScheduleScreen.dart';
 import 'package:flutter_application_2/screens/JobMetricsScreen.dart';
 import 'package:flutter_application_2/screens/JobsAppliedByCandidatesScreen.dart';
-import 'package:flutter_application_2/screens/DraftJobsScreen.dart';
 import 'package:flutter_application_2/screens/InterviewQuestionsScreen.dart';
 import 'package:flutter_application_2/screens/MyChatsPage.dart';
 import 'package:flutter_application_2/screens/OfferLetterAutomationScreen.dart';
 import 'package:flutter_application_2/screens/PostedJobsScreen.dart';
-import 'package:flutter_application_2/screens/notifications_screen.dart';
 import 'package:flutter_application_2/services/fcm_token_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -354,7 +353,6 @@ class MyApp extends StatelessWidget {
         '/': (context) => userProvider.isLoading
             ? LoadingScreen()
             : (userProvider.userData != null ? HomeScreen() : AuthWrapper()),
-        '/DraftJobsScreen': (context) => DraftJobsScreen(),
         '/HomeScreen': (context) => HomeScreen(),
       },
     );
@@ -2406,7 +2404,7 @@ class _HomeScreenState extends State<HomeScreen>
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => NotificationsScreen()),
+              MaterialPageRoute(builder: (context) => CareerFitSuggestionsScreen()),
             );
           },
         ),

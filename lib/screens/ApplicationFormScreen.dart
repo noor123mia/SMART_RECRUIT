@@ -5,10 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart'
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart' as path;
 import 'package:supabase_flutter/supabase_flutter.dart'
     as supabase; // Alias for Supabase
-import 'package:flutter_application_2/services/supabase_config.dart';
 
 class ApplicationFormScreen extends StatefulWidget {
   final String jobId;

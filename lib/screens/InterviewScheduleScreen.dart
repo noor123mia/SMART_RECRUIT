@@ -228,11 +228,6 @@ class _InterviewScheduleScreenState extends State<InterviewScheduleScreen> {
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  String _prettyDate(dynamic v) {
-    final dt = _parseDate(v);
-    return DateFormat('EEE, MMM d, yyyy').format(dt);
-  }
-
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
@@ -243,35 +238,75 @@ class _InterviewScheduleScreenState extends State<InterviewScheduleScreen> {
   Widget build(BuildContext context) {
     final title = 'My Interviews'; // Always for candidate
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: Text(title),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+            fontSize: 20,
+          ),
+        ),
+        centerTitle: true,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _refresh,
+          ),
         ],
       ),
-      backgroundColor: const Color(0xFFF3F4F6),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+              ),
+            )
           : _error != null
               ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Text(_error!,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 64, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text(
+                        _error!,
+                        style: TextStyle(color: Colors.red[600], fontSize: 16),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.red)),
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: _refresh, // Retry
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF3B82F6),
+                        ),
+                        child: const Text('Retry',
+                            style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
                   ),
                 )
               : _items.isEmpty
-                  ? _EmptyState(
-                      isRecruiter: false) // Always candidate empty state
+                  ? _EmptyState() // Candidate empty state
                   : RefreshIndicator(
                       onRefresh: _refresh,
+                      color: const Color(0xFF3B82F6),
                       child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(20),
                         itemCount: _items.length,
                         itemBuilder: (_, i) => _InterviewCard(
                           data: _items[i],
-                          isRecruiter: false, // Always candidate view
                           onJoin: _join,
                         ),
                       ),
@@ -282,123 +317,190 @@ class _InterviewScheduleScreenState extends State<InterviewScheduleScreen> {
 
 class _InterviewCard extends StatelessWidget {
   final Map<String, dynamic> data;
-  final bool isRecruiter; // Ignored now, but kept for compatibility
   final Future<void> Function(Map<String, dynamic>) onJoin;
 
   const _InterviewCard({
     Key? key,
     required this.data,
-    required this.isRecruiter,
     required this.onJoin,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final status = (data['status'] ?? 'Scheduled').toString();
-    final statusColor = _statusColor(status);
+    final statusInfo = _getStatusInfo(status);
     final meetingLink = (data['meetingLink'] ?? '').toString();
     final platform = (data['platform'] ?? '').toString();
+    final canJoin = meetingLink.isNotEmpty &&
+        platform.toLowerCase() != 'platform' &&
+        (status.toLowerCase() == 'scheduled' ||
+            status.toLowerCase() == 'invited' ||
+            status.toLowerCase() == 'confirmed');
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: statusColor.withOpacity(.25), width: 1.3),
         boxShadow: [
           BoxShadow(
-              color: Colors.black12, blurRadius: 8, offset: const Offset(0, 3))
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row: recruiter name + status chip (candidate view)
+            // Header row: icon + recruiter name + status chip
             Row(
               children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.video_call,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
                 Expanded(
-                  child: Text(
-                    (data['recruiterName'] ??
-                        'Recruiter'), // Show recruiter for candidate
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w700),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        data['recruiterName'] ?? 'Recruiter',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        data['position'] ?? 'Position',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: statusColor.withOpacity(.25)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
                   ),
-                  child: Text(status,
-                      style: TextStyle(
-                          color: statusColor,
+                  decoration: BoxDecoration(
+                    color: statusInfo['bgColor'],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(statusInfo['icon'],
+                          size: 16, color: statusInfo['color']),
+                      const SizedBox(width: 6),
+                      Text(
+                        statusInfo['text'],
+                        style: TextStyle(
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          fontSize: 12)),
+                          color: statusInfo['color'],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-
-            // Detail rows
-            _InfoRow(
-                icon: Icons.work_outline,
-                label: 'Position',
-                value: data['position'] ?? ''),
-            _InfoRow(
-                icon: Icons.forum_outlined,
-                label: 'Type',
-                value: data['interviewType'] ?? ''),
-            _InfoRow(
-                icon: Icons.person_outline,
-                label: 'Interviewer',
-                value: data['interviewer'] ?? ''),
-            _InfoRow(
-                icon: Icons.event_outlined,
-                label: 'Date',
-                value: _prettyDate(data['date'])),
-            _InfoRow(
-                icon: Icons.schedule_outlined,
-                label: 'Time',
-                value: '${data['time'] ?? ''} (${data['duration'] ?? ''}m)'),
-            _InfoRow(
-                icon: Icons.video_call_outlined,
-                label: 'Platform',
-                value: data['platform'] ?? ''),
-            if (meetingLink.isNotEmpty)
-              InkWell(
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Opening: $meetingLink')));
-                },
-                child: _InfoRow(
-                    icon: Icons.link,
-                    label: 'Meeting',
-                    value: meetingLink,
-                    isLink: true),
-              ),
-
+            const SizedBox(height: 16),
+            Divider(color: Colors.grey[200]),
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              Icons.forum_outlined,
+              'Interview Type',
+              data['interviewType'] ?? '',
+            ),
             const SizedBox(height: 12),
-
-            // Actions - Candidate can only join if scheduled/invited/confirmed
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (meetingLink.isNotEmpty &&
-                    platform.toLowerCase() != 'platform' &&
-                    (status.toLowerCase() == 'scheduled' ||
-                        status.toLowerCase() == 'invited' ||
-                        status.toLowerCase() == 'confirmed'))
-                  ElevatedButton.icon(
-                    onPressed: () => onJoin(data),
-                    icon: const Icon(Icons.video_call),
-                    label: const Text('Join Interview'),
+            _buildInfoRow(
+              Icons.person_outline,
+              'Interviewer',
+              data['interviewer'] ?? '',
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow(
+              Icons.event_outlined,
+              'Date',
+              _prettyDate(data['date']),
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow(
+              Icons.schedule_outlined,
+              'Time',
+              '${data['time'] ?? ''} (${data['duration'] ?? ''}m)',
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow(
+              Icons.video_call_outlined,
+              'Platform',
+              data['platform'] ?? '',
+            ),
+            const SizedBox(height: 20),
+            // Action Button
+            Center(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: canJoin
+                      ? const LinearGradient(
+                          colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+                        )
+                      : null,
+                  borderRadius: BorderRadius.circular(12),
+                  color: canJoin ? null : Colors.grey[100],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: canJoin ? () => onJoin(data) : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            canJoin ? Icons.video_call : Icons.info_outline,
+                            color: canJoin ? Colors.white : Colors.grey[600],
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            canJoin ? 'Join Interview' : 'Join Interview',
+                            style: TextStyle(
+                              color: canJoin ? Colors.white : Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-              ],
+                ),
+              ),
             ),
           ],
         ),
@@ -406,22 +508,83 @@ class _InterviewCard extends StatelessWidget {
     );
   }
 
-  static Color _statusColor(String status) {
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFF3B82F6)),
+        const SizedBox(width: 12),
+        Text(
+          '$label: ',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[700],
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[800],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Map<String, dynamic> _getStatusInfo(String status) {
     switch (status.toLowerCase()) {
       case 'scheduled':
-        return Colors.blue;
+        return {
+          'color': const Color(0xFF3B82F6),
+          'bgColor': const Color(0xFFE0F2FE),
+          'icon': Icons.schedule,
+          'text': 'Scheduled',
+        };
       case 'invited':
-        return Colors.indigo;
+        return {
+          'color': const Color(0xFF6366F1),
+          'bgColor': const Color(0xFFEEF2FF),
+          'icon': Icons.mail_outline,
+          'text': 'Invited',
+        };
       case 'confirmed':
-        return Colors.green;
+        return {
+          'color': const Color(0xFF10B981),
+          'bgColor': const Color(0xFFD1FAE5),
+          'icon': Icons.check_circle,
+          'text': 'Confirmed',
+        };
       case 'completed':
-        return Colors.green;
+        return {
+          'color': const Color(0xFF10B981),
+          'bgColor': const Color(0xFFD1FAE5),
+          'icon': Icons.check_circle,
+          'text': 'Completed',
+        };
       case 'cancelled':
-        return Colors.red;
+        return {
+          'color': const Color(0xFFEF4444),
+          'bgColor': const Color(0xFFFEE2E2),
+          'icon': Icons.cancel,
+          'text': 'Cancelled',
+        };
       case 'rescheduled':
-        return Colors.orange;
+        return {
+          'color': const Color(0xFFF59E0B),
+          'bgColor': const Color(0xFFFEF3C7),
+          'icon': Icons.schedule,
+          'text': 'Rescheduled',
+        };
       default:
-        return Colors.grey;
+        return {
+          'color': Colors.grey,
+          'bgColor': Colors.grey[100]!,
+          'icon': Icons.help_outline,
+          'text': status,
+        };
     }
   }
 
@@ -442,74 +605,45 @@ class _InterviewCard extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final bool isLink;
-  const _InfoRow(
-      {Key? key,
-      required this.icon,
-      required this.label,
-      required this.value,
-      this.isLink = false})
-      : super(key: key);
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.bodyMedium;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 18, color: Colors.black54),
-          const SizedBox(width: 8),
-          Text('$label: ', style: style?.copyWith(fontWeight: FontWeight.w600)),
-          Expanded(
-            child: Text(
-              value,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: style?.copyWith(
-                color: isLink ? Colors.indigo : Colors.black87,
-                decoration:
-                    isLink ? TextDecoration.underline : TextDecoration.none,
-              ),
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.event_busy,
+              size: 80,
+              color: Colors.grey[400],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            "No Interviews Scheduled",
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Upcoming interviews will appear here",
+            style: TextStyle(
+              fontSize: 15,
+              color: Colors.grey[500],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  final bool isRecruiter;
-  const _EmptyState({Key? key, required this.isRecruiter}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final title = 'No interviews assigned to you'; // Candidate-specific
-    final sub = 'When a recruiter invites you, it will show here.';
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
-            const SizedBox(height: 8),
-            Text(sub,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey)),
-          ],
-        ),
       ),
     );
   }

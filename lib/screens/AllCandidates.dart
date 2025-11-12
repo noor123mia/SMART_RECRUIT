@@ -5,10 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'dart:developer' as developer; // For debugPrint
-import '../services/matching_service.dart'; // Adjust path to your MatchingService
+import 'dart:developer' as developer; 
+import '../services/matching_service.dart'; 
 
 class CandidateMatchScreen extends StatefulWidget {
   @override
@@ -1291,69 +1289,6 @@ class _AppliedCandidatesScreenState extends State<AppliedCandidatesScreen> {
                                 );
                               }
                             },
-                            // onPressed: () async {
-                            //   final resumeUrl =
-                            //       candidateData['applicantResumeUrl']
-                            //           as String?;
-                            //   if (resumeUrl == null || resumeUrl.isEmpty) {
-                            //     developer.log('Resume URL is null or empty');
-                            //     ScaffoldMessenger.of(context).showSnackBar(
-                            //       const SnackBar(
-                            //         content: Text('No resume URL available'),
-                            //         backgroundColor: Colors.red,
-                            //       ),
-                            //     );
-                            //     return;
-                            //   }
-
-                            //   try {
-                            //     developer.log('Resume URL: $resumeUrl');
-                            //     String filePath = resumeUrl;
-                            //     if (resumeUrl.contains(
-                            //         '/storage/v1/object/public/smartrecruitfiles/')) {
-                            //       filePath = resumeUrl
-                            //           .split(
-                            //               '/storage/v1/object/public/smartrecruitfiles/')
-                            //           .last;
-                            //     }
-                            //     developer.log('File Path: $filePath');
-
-                            //     final publicUrl = _supabase.storage
-                            //         .from('smartrecruitfiles')
-                            //         .getPublicUrl(filePath);
-                            //     developer.log('Public URL: $publicUrl');
-
-                            //     final uri = Uri.parse(publicUrl);
-                            //     if (!await canLaunchUrl(uri)) {
-                            //       await Clipboard.setData(
-                            //           ClipboardData(text: publicUrl));
-                            //       ScaffoldMessenger.of(context).showSnackBar(
-                            //         const SnackBar(
-                            //           content: Text(
-                            //               'Cannot open resume. Please ensure a browser or PDF viewer (e.g., Chrome, Adobe Acrobat) is installed. URL copied to clipboard.'),
-                            //           backgroundColor: Colors.orange,
-                            //           duration: Duration(seconds: 5),
-                            //         ),
-                            //       );
-                            //       return;
-                            //     }
-
-                            //     await launchUrl(
-                            //       uri,
-                            //       mode: LaunchMode.externalApplication,
-                            //     );
-                            //   } catch (e) {
-                            //     developer.log('Failed to open resume: $e');
-                            //     await Clipboard.setData(
-                            //         ClipboardData(text: resumeUrl));
-                            //     ScaffoldMessenger.of(context).showSnackBar(
-                            //       SnackBar(
-                            //         content: Text('Failed to open resume: $e'),
-                            //         backgroundColor: Colors.red,
-                            //       ),
-                            //     );
-                            //   }
-                            // },
                           ),
                         ],
                       ),
