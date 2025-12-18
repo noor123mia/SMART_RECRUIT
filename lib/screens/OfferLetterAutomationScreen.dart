@@ -10,7 +10,6 @@ import 'package:googleapis/gmail/v1.dart' as g;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-
 // Custom HTTP client for Google APIs authentication
 class GoogleAuthClient extends http.BaseClient {
   final Map<String, String> _headers;
@@ -24,25 +23,22 @@ class GoogleAuthClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) {
     return _client.send(request..headers.addAll(_headers));
   }
-
   @override
   void close() {
     _client.close();
   }
 }
-
 class OfferLetterAutomationScreen extends StatefulWidget {
   const OfferLetterAutomationScreen({Key? key}) : super(key: key);
   @override
   _OfferLetterAutomationScreenState createState() =>
       _OfferLetterAutomationScreenState();
 }
-
 class _OfferLetterAutomationScreenState
     extends State<OfferLetterAutomationScreen> {
   String? selectedJobId;
   String? selectedJobTitle;
-  List<String> selectedCandidates = []; // UPDATED: Now stores interview doc IDs
+  List<String> selectedCandidates = []; // stores candidate IDs
   String recruiterId = FirebaseAuth.instance.currentUser!.uid;
   final _supabase = Supabase.instance.client;
   Map<String, dynamic>? jobData;
@@ -187,218 +183,43 @@ class _OfferLetterAutomationScreenState
                     .where('jobId', isEqualTo: selectedJobId)
                     .where('status', isEqualTo: 'accepted')
                     .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                builder: (context, interviewSnap) {
+                  if (interviewSnap.connectionState ==
+                      ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF3B82F6).withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(Icons.person_off_outlined,
-                                size: 80, color: Colors.grey[400]),
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            "No Accepted Candidates",
-                            style: TextStyle(
-                              fontSize: 20,
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                  var candidates = snapshot.data!.docs;
-                  return Column(
-                    children: [
-                      Expanded(
-                        child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: candidates.length,
-                          itemBuilder: (context, index) {
-                            var interviewDoc =
-                                candidates[index]; // UPDATED: Full doc
-                            var candidate =
-                                interviewDoc.data() as Map<String, dynamic>;
-                            var interviewId =
-                                interviewDoc.id; // UPDATED: Interview ID
-                            var candidateId = candidate['candidateId'];
-                            bool isSelected = selectedCandidates.contains(
-                                interviewId); // UPDATED: Check interviewId
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFFDBEAFE)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? const Color(0xFF3B82F6)
-                                      : Colors.grey[200]!,
-                                  width: isSelected ? 2 : 1,
-                                ),
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () {
-                                    setState(() {
-                                      if (isSelected) {
-                                        selectedCandidates.remove(
-                                            interviewId); // UPDATED: Remove interviewId
-                                      } else {
-                                        selectedCandidates.add(
-                                            interviewId); // UPDATED: Add interviewId
-                                      }
-                                    });
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          width: 48,
-                                          height: 48,
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              colors: isSelected
-                                                  ? [
-                                                      const Color(0xFF3B82F6),
-                                                      const Color(0xFF1D4ED8)
-                                                    ]
-                                                  : [
-                                                      Colors.grey[300]!,
-                                                      Colors.grey[400]!
-                                                    ],
-                                            ),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                          ),
-                                          child: Icon(
-                                            isSelected
-                                                ? Icons.check_circle
-                                                : Icons.person_outline,
-                                            color: Colors.white,
-                                            size: 26,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                candidate['candidateName'] ??
-                                                    'Unknown',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 16,
-                                                  color: isSelected
-                                                      ? const Color(0xFF3B82F6)
-                                                      : Colors.black87,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                candidate['position'] ?? 'N/A',
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  color: Colors.grey[600],
-                                                ),
-                                              ),
-                                              // UPDATED: Show interview date/time for distinction with label
-                                              if (candidate['date'] != null &&
-                                                  candidate['time'] != null)
-                                                Text(
-                                                  'Interviewed on: ${candidate['date']} at ${candidate['time']}',
-                                                  style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.grey[500]),
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      // Generate Button
-                      if (selectedCandidates.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, -2),
-                              ),
-                            ],
-                          ),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
-                              ),
-                              borderRadius: BorderRadius.circular(14),
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      const Color(0xFF3B82F6).withOpacity(0.3),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(14),
-                                onTap: _showOfferDetailsForm,
-                                child: Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 16),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(Icons.description,
-                                          color: Colors.white, size: 24),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        "Generate Offer Letter (${selectedCandidates.length})",
-                                        style: const TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                  List<QueryDocumentSnapshot> interviews =
+                      interviewSnap.data?.docs ?? [];
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('AppliedCandidates')
+                        .where('jobId', isEqualTo: selectedJobId)
+                        .where('status', isEqualTo: 'accepted')
+                        .snapshots(),
+                    builder: (context, appliedSnap) {
+                      if (appliedSnap.connectionState ==
+                              ConnectionState.waiting &&
+                          interviews.isEmpty) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      List<QueryDocumentSnapshot> appliedDocs =
+                          appliedSnap.hasData ? appliedSnap.data!.docs : [];
+                      return FutureBuilder<List<Map<String, dynamic>>>(
+                        future: _getCombinedCandidates(interviews, appliedDocs),
+                        builder: (context, candSnap) {
+                          if (candSnap.connectionState ==
+                              ConnectionState.waiting) {
+                            List<Map<String, dynamic>> tempCands =
+                                _buildTempCandidatesFromInterviews(interviews);
+                            return _buildColumnWithList(tempCands);
+                          }
+                          if (!candSnap.hasData || candSnap.data!.isEmpty) {
+                            return _buildEmptyState();
+                          }
+                          return _buildColumnWithList(candSnap.data!);
+                        },
+                      );
+                    },
                   );
                 },
               ),
@@ -407,7 +228,285 @@ class _OfferLetterAutomationScreenState
       ),
     );
   }
-
+  Future<List<Map<String, dynamic>>> _getCombinedCandidates(
+      List<QueryDocumentSnapshot> interviews,
+      List<QueryDocumentSnapshot> appliedDocs) async {
+    List<Map<String, dynamic>> candidates = <Map<String, dynamic>>[];
+    Set<String> existingCids = <String>{};
+    // Add from interviews
+    for (var doc in interviews) {
+      var data = doc.data() as Map<String, dynamic>;
+      String cid = data['candidateId'];
+      candidates.add({
+        'candidateId': cid,
+        'candidateName': data['candidateName'] ?? 'Unknown',
+        'position': data['position'] ?? selectedJobTitle,
+        'date': data['date'],
+        'time': data['time'],
+        'type': 'interview',
+      });
+      existingCids.add(cid);
+    }
+    // Collect new applied candidates
+    List<String> newCids = <String>[];
+    List<QueryDocumentSnapshot> newAppliedDocs = <QueryDocumentSnapshot>[];
+    for (var doc in appliedDocs) {
+      var data = doc.data() as Map<String, dynamic>;
+      String cid = data['candidateId'];
+      if (!existingCids.contains(cid)) {
+        newCids.add(cid);
+        newAppliedDocs.add(doc);
+      }
+    }
+    // Fetch names for new applied candidates
+    if (newCids.isNotEmpty) {
+      final fs = FirebaseFirestore.instance;
+      final nameSnap = await fs
+          .collection('JobSeekersProfiles')
+          .where(FieldPath.documentId, whereIn: newCids)
+          .get();
+      Map<String, String> names = <String, String>{};
+      for (var doc in nameSnap.docs) {
+        names[doc.id] = doc.data()['name'] as String? ?? 'Unknown';
+      }
+      for (int i = 0; i < newAppliedDocs.length; i++) {
+        String cid = newCids[i];
+        candidates.add({
+          'candidateId': cid,
+          'candidateName': names[cid] ?? 'Unknown',
+          'position': selectedJobTitle,
+          'date': null,
+          'time': null,
+          'type': 'applied',
+        });
+      }
+    }
+    return candidates;
+  }
+  List<Map<String, dynamic>> _buildTempCandidatesFromInterviews(
+      List<QueryDocumentSnapshot> interviews) {
+    List<Map<String, dynamic>> tempCands = <Map<String, dynamic>>[];
+    for (var doc in interviews) {
+      var data = doc.data() as Map<String, dynamic>;
+      String cid = data['candidateId'];
+      tempCands.add({
+        'candidateId': cid,
+        'candidateName': data['candidateName'] ?? 'Unknown',
+        'position': data['position'] ?? selectedJobTitle,
+        'date': data['date'],
+        'time': data['time'],
+        'type': 'interview',
+      });
+    }
+    return tempCands;
+  }
+  Widget _buildColumnWithList(List<Map<String, dynamic>> candidates) {
+    return Column(
+      children: [
+        Expanded(
+          child: _buildListViewFromCandidates(candidates),
+        ),
+        if (selectedCandidates.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF3B82F6).withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: _showOfferDetailsForm,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.description,
+                            color: Colors.white, size: 24),
+                        const SizedBox(width: 12),
+                        Text(
+                          "Generate Offer Letter (${selectedCandidates.length})",
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+  Widget _buildListViewFromCandidates(List<Map<String, dynamic>> candidates) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: candidates.length,
+      itemBuilder: (context, index) {
+        var candidate = candidates[index];
+        bool isSelected = selectedCandidates.contains(candidate['candidateId']);
+        String subtitle = '';
+        if (candidate['type'] == 'interview' &&
+            candidate['date'] != null &&
+            candidate['time'] != null) {
+          subtitle =
+              'Interviewed on: ${candidate['date']} at ${candidate['time']}';
+        } else if (candidate['type'] == 'applied') {
+          subtitle = 'Application selected';
+        }
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFFDBEAFE) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF3B82F6) : Colors.grey[200]!,
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                setState(() {
+                  if (isSelected) {
+                    selectedCandidates.remove(candidate['candidateId']);
+                  } else {
+                    selectedCandidates.add(candidate['candidateId']);
+                  }
+                });
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: isSelected
+                              ? [
+                                  const Color(0xFF3B82F6),
+                                  const Color(0xFF1D4ED8)
+                                ]
+                              : [Colors.grey[300]!, Colors.grey[400]!],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        isSelected ? Icons.check_circle : Icons.person_outline,
+                        color: Colors.white,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            candidate['candidateName'],
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: isSelected
+                                  ? const Color(0xFF3B82F6)
+                                  : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            candidate['position'],
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          if (subtitle.isNotEmpty)
+                            Text(
+                              subtitle,
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey[500]),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.person_off_outlined,
+                size: 80, color: Colors.grey[400]),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            "No Selected or Accepted Candidates",
+            style: TextStyle(
+              fontSize: 20,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: Text(
+              "Candidates with selected applications or accepted interviews will appear here",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[500],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   void _showOfferDetailsForm() {
     final TextEditingController joiningDateController = TextEditingController();
     final TextEditingController acceptanceDeadlineController =
@@ -714,7 +813,6 @@ class _OfferLetterAutomationScreenState
       ),
     );
   }
-
   Widget _buildFormField({
     required TextEditingController controller,
     required String label,
@@ -756,7 +854,6 @@ class _OfferLetterAutomationScreenState
     );
   }
 }
-
 // Editor Screen with Full Preview and Edit Dialog
 class OfferLetterEditorScreen extends StatefulWidget {
   final Map<String, dynamic> jobData;
@@ -784,7 +881,6 @@ class OfferLetterEditorScreen extends StatefulWidget {
   _OfferLetterEditorScreenState createState() =>
       _OfferLetterEditorScreenState();
 }
-
 class _OfferLetterEditorScreenState extends State<OfferLetterEditorScreen> {
   late TextEditingController companyNameController;
   late TextEditingController positionController;
@@ -842,7 +938,6 @@ class _OfferLetterEditorScreenState extends State<OfferLetterEditorScreen> {
           "If you accept the terms and conditions outlined in this offer letter, please reply to accept this offer.",
     );
   }
-
   Future<void> _initializeGmail() async {
     try {
       final account = await _googleSignIn.signInSilently();
@@ -863,7 +958,6 @@ class _OfferLetterEditorScreenState extends State<OfferLetterEditorScreen> {
       developer.log('Gmail init error: $e');
     }
   }
-
   String _encodeEmail(String from, String to, String subject, String body) {
     const charset = 'UTF-8';
     final fromEncoded = '=?$charset?B?${base64Encode(utf8.encode(from))}?=';
@@ -881,7 +975,6 @@ class _OfferLetterEditorScreenState extends State<OfferLetterEditorScreen> {
         .replaceAll('+', '-')
         .replaceAll('/', '_');
   }
-
   Future<void> _sendOfferEmail({
     required String recruiterEmail,
     required String candidateEmail,
@@ -927,7 +1020,6 @@ $_recruiterName
       developer.log('Offer email sending error: $e');
     }
   }
-
   Future<String> _getRecruiterEmail() async {
     try {
       final userDoc =
@@ -938,7 +1030,6 @@ $_recruiterName
       return '';
     }
   }
-
   @override
   void dispose() {
     companyNameController.dispose();
@@ -955,7 +1046,6 @@ $_recruiterName
     acceptanceTextController.dispose();
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1063,7 +1153,6 @@ $_recruiterName
       ),
     );
   }
-
   void _showEditDialog() {
     showDialog(
       context: context,
@@ -1303,7 +1392,6 @@ $_recruiterName
       ),
     );
   }
-
   Widget _buildEditField({
     required TextEditingController controller,
     required String label,
@@ -1362,7 +1450,6 @@ $_recruiterName
       ),
     );
   }
-
   Widget _buildPreview() {
     List<String> benefits =
         benefitsController.text.split('\n').where((b) => b.isNotEmpty).toList();
@@ -1513,7 +1600,6 @@ $_recruiterName
       ],
     );
   }
-
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
@@ -1524,7 +1610,6 @@ $_recruiterName
       ),
     );
   }
-
   Widget _buildDetailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1555,7 +1640,6 @@ $_recruiterName
       ),
     );
   }
-
   Future<void> _sendOfferLetters() async {
     showDialog(
       context: context,
@@ -1608,23 +1692,17 @@ $_recruiterName
     try {
       final recruiterEmail = await _getRecruiterEmail();
       int successCount = 0;
-      for (String interviewId in widget.selectedCandidates) {
-        // UPDATED: Loop over interview IDs
+      for (String candidateId in widget.selectedCandidates) {
         try {
-          // UPDATED: Fetch specific interview doc using interviewId
-          var candidateDoc = await FirebaseFirestore.instance
-              .collection('ScheduledInterviews')
-              .doc(interviewId)
-              .get();
-          if (!candidateDoc.exists) continue;
-          var candidateData = candidateDoc.data()!;
-          String candidateId =
-              candidateData['candidateId']; // UPDATED: Extract from data
-          String candidateName = candidateData['candidateName'] ?? 'Candidate';
-          // UPDATED: Extract interview date
-          String interviewDate = candidateData['date'] ?? '[Interview Date]';
-          // Fetch candidate email from AppliedCandidates
+          // Fetch candidate profile for name
+          var profileDoc = await _fs.collection('JobSeekersProfiles').doc(candidateId).get();
+          if (!profileDoc.exists) continue;
+          var profileData = profileDoc.data()!;
+          String candidateName = profileData['name'] ?? 'Candidate';
+
+          // Fetch applied doc for email and to update
           String candidateEmail = '';
+          String? appliedDocId;
           final appliedQuery = await _fs
               .collection('AppliedCandidates')
               .where('candidateId', isEqualTo: candidateId)
@@ -1634,7 +1712,25 @@ $_recruiterName
           if (appliedQuery.docs.isNotEmpty) {
             final appData = appliedQuery.docs.first.data();
             candidateEmail = (appData['applicantEmail'] ?? '').toString();
+            appliedDocId = appliedQuery.docs.first.id;
           }
+
+          // Check for interview doc for date and to update
+          String interviewDate = '[Interview Date]';
+          String? interviewDocId;
+          final interviewQuery = await _fs
+              .collection('ScheduledInterviews')
+              .where('candidateId', isEqualTo: candidateId)
+              .where('jobId', isEqualTo: widget.jobId)
+              .where('status', isEqualTo: 'accepted')
+              .limit(1)
+              .get();
+          if (interviewQuery.docs.isNotEmpty) {
+            final intData = interviewQuery.docs.first.data();
+            interviewDate = intData['date'] ?? '[Interview Date]';
+            interviewDocId = interviewQuery.docs.first.id;
+          }
+
           // Generate PDF
           final pdf = await _generatePDF(candidateName, interviewDate);
           final pdfBytes = await pdf.save();
@@ -1669,15 +1765,16 @@ $_recruiterName
             'sentAt': FieldValue.serverTimestamp(),
             'status': 'sent',
           });
-          // Update the interview status to OfferSent
-          await FirebaseFirestore.instance
-              .collection('ScheduledInterviews')
-              .doc(interviewId) // UPDATED: Specific interview update
-              .update({'status': 'OfferSent'});
-// Update status in AppliedCandidates collection
-          if (appliedQuery.docs.isNotEmpty) {
-            await appliedQuery.docs.first.reference
+          // Update the interview status to OfferSent if exists
+          if (interviewDocId != null) {
+            await FirebaseFirestore.instance
+                .collection('ScheduledInterviews')
+                .doc(interviewDocId)
                 .update({'status': 'OfferSent'});
+          }
+          // Update status in AppliedCandidates collection if exists
+          if (appliedDocId != null) {
+            await _fs.collection('AppliedCandidates').doc(appliedDocId).update({'status': 'OfferSent'});
           }
           // Send email if email is available
           if (candidateEmail.isNotEmpty && recruiterEmail.isNotEmpty) {
@@ -1690,8 +1787,7 @@ $_recruiterName
           }
           successCount++;
         } catch (e) {
-          developer.log(
-              'Error for interview $interviewId: $e'); // UPDATED: Log interviewId
+          developer.log('Error for candidate $candidateId: $e');
         }
       }
       if (mounted) {
@@ -1728,7 +1824,6 @@ $_recruiterName
       }
     }
   }
-
   Future<pw.Document> _generatePDF(
       String candidateName, String interviewDate) async {
     final pdf = pw.Document();
@@ -1881,7 +1976,6 @@ $_recruiterName
     );
     return pdf;
   }
-
   pw.Widget _buildPDFDetailRow(String label, String value) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 6),

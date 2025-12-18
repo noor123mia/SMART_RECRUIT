@@ -72,16 +72,13 @@ class MyChatsPage extends StatelessWidget {
       }
     }
 
-    // For candidates: try 'JobSeekersProfiles' for name
-    if (!isRecruiter) {
-      final profileDoc =
-          await fs.collection('JobSeekersProfiles').doc(uid).get();
-      if (profileDoc.exists) {
-        final data = profileDoc.data()!;
-        info['name'] = (data['name'] as String?)?.trim() ?? '';
-        if (info['name']!.isNotEmpty) {
-          return info;
-        }
+    // Try 'JobSeekersProfiles' for name (for candidates)
+    final profileDoc = await fs.collection('JobSeekersProfiles').doc(uid).get();
+    if (profileDoc.exists) {
+      final data = profileDoc.data()!;
+      info['name'] = (data['name'] as String?)?.trim() ?? '';
+      if (info['name']!.isNotEmpty) {
+        return info;
       }
     }
 
@@ -130,20 +127,35 @@ class MyChatsPage extends StatelessWidget {
     return candidateIds.toList()..sort();
   }
 
-  // -------- Candidate view: recruiters who sent offer letters --------
+  // -------- Candidate view: recruiters who sent offer letters OR initiated chats --------
   Future<List<String>> _fetchRecruiterIdsForCandidate(String meUid) async {
     final fs = FirebaseFirestore.instance;
+    final recruiterIds = <String>{};
 
+    // Fetch from OfferLetters
     final offersSnap = await fs
         .collection('OfferLetters')
         .where('candidateId', isEqualTo: meUid)
         .get();
-
-    final recruiterIds = <String>{};
     for (final o in offersSnap.docs) {
       final rid = o.data()['recruiterId'] as String?;
       if (rid != null && rid.isNotEmpty && rid != meUid) {
         recruiterIds.add(rid);
+      }
+    }
+
+    // Fetch from chats: recruiters who have a chat with this candidate
+    final chatsSnap = await fs
+        .collection('chats')
+        .where('participants', arrayContains: meUid)
+        .get();
+    for (final c in chatsSnap.docs) {
+      final parts = c.data()['participants'] as List<dynamic>? ?? [];
+      for (final p in parts) {
+        final pid = p as String?;
+        if (pid != null && pid.isNotEmpty && pid != meUid) {
+          recruiterIds.add(pid);
+        }
       }
     }
 
@@ -203,7 +215,7 @@ class MyChatsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final me = FirebaseAuth.instance.currentUser!;
     final meUid = me.uid;
-    final title = isRecruiter ? 'My Applicants' : 'Job Offers';
+    final title = isRecruiter ? 'My Applicants' : 'Recruiters';
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -280,9 +292,9 @@ class MyChatsPage extends StatelessWidget {
                     if (!snap.hasData || snap.data!.isEmpty) {
                       return _buildEmptyState(
                         icon: Icons.work_outline,
-                        message: 'No offers yet',
+                        message: 'No recruiters yet',
                         subtitle:
-                            'Recruiters who send you offers will appear here',
+                            'Recruiters who send you offers or start chats will appear here',
                       );
                     }
                     final peers = snap.data!;

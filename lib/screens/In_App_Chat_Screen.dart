@@ -174,6 +174,75 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // ---------- Clear All Messages from My View ----------
+  Future<void> _clearAllMessagesFromMyView() async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear Messages'),
+        content: const Text(
+            'Are you sure you want to clear all messages from your view in this chat? This will remove all messages (yours and received) from your view only and cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _performClearAllMessagesFromMyView();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _performClearAllMessagesFromMyView() async {
+    final myId = _auth.currentUser!.uid;
+    final messagesRef = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(_chatId)
+        .collection('messages');
+    final querySnapshot = await messagesRef.get();
+
+    if (querySnapshot.docs.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No messages to clear.')),
+        );
+      }
+      return;
+    }
+
+    final batch = FirebaseFirestore.instance.batch();
+    for (var doc in querySnapshot.docs) {
+      batch.update(doc.reference, {
+        'deletedFor': FieldValue.arrayUnion([myId]),
+      });
+    }
+
+    await batch.commit();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('All messages have been cleared from your view.')),
+      );
+    }
+
+    // Scroll to bottom after clearing
+    if (_scrollCtrl.hasClients) {
+      _scrollCtrl.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   // ---------- Send Message ----------
   Future<void> _sendMessage(String text) async {
     final trimmed = text.trim();
@@ -216,6 +285,7 @@ class _ChatScreenState extends State<ChatScreen> {
       'senderId': myId,
       'receiverId': widget.peerId,
       'createdAt': FieldValue.serverTimestamp(),
+      'deletedFor': <String>[],
     });
 
     await FirebaseFirestore.instance.collection('chats').doc(_chatId).set({
@@ -268,8 +338,14 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
         final docs = snap.data!.docs;
+        final myId = _auth.currentUser!.uid;
+        final filteredDocs = docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final deletedFor = data['deletedFor'] as List<dynamic>? ?? [];
+          return !deletedFor.contains(myId);
+        }).toList();
 
-        if (docs.isEmpty) {
+        if (filteredDocs.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -315,10 +391,11 @@ class _ChatScreenState extends State<ChatScreen> {
             horizontal: 16,
             vertical: 16,
           ),
-          itemCount: docs.length,
+          itemCount: filteredDocs.length,
           itemBuilder: (context, i) {
-            final data = docs[i].data() as Map<String, dynamic>;
-            final isMe = data['senderId'] == _auth.currentUser!.uid;
+            final doc = filteredDocs[i];
+            final data = doc.data() as Map<String, dynamic>;
+            final isMe = data['senderId'] == myId;
             final text = (data['text'] ?? '') as String;
             final timestamp = data['createdAt'] as Timestamp?;
 
@@ -617,6 +694,13 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.white),
+            onPressed: _clearAllMessagesFromMyView,
+            tooltip: 'Clear all messages from my view',
+          ),
+        ],
       ),
       body: FutureBuilder<bool>(
         future: _isChatEnabledForUser(widget.peerId),

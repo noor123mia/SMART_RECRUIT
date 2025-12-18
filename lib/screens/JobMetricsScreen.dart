@@ -418,12 +418,32 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
                     ],
                   ),
                 ),
+                // Delete Button
+                IconButton(
+                  onPressed: () => _showDeleteConfirmationDialog(),
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    color: Colors.white.withOpacity(0.8),
+                    size: 24,
+                  ),
+                  tooltip: 'Delete Job',
+                  padding: EdgeInsets.all(4),
+                  constraints: BoxConstraints(minWidth: 32, minHeight: 32),
+                  style: ButtonStyle(
+                    backgroundColor: MaterialStateProperty.all(
+                      Colors.red.withOpacity(0.2),
+                    ),
+                    shape: MaterialStateProperty.all(
+                      const CircleBorder(side: BorderSide.none),
+                    ),
+                  ),
+                ),
               ],
             ),
             SizedBox(height: 18),
             Container(
               height: 1,
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white,
             ),
             SizedBox(height: 16),
             Row(
@@ -457,6 +477,168 @@ class _JobMetricsScreenState extends State<JobMetricsScreen> {
         ),
       ),
     );
+  }
+
+  void _showDeleteConfirmationDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange,
+                size: 24,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Delete Job?',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'This will permanently delete the job "${selectedJobData!['title'] ?? 'Job'}" from JobsPosted and all scheduled interviews for this job. This action cannot be undone.',
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _deleteJob();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(
+                'Delete',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteJob() async {
+    if (selectedJobId == null) return;
+
+    // Save old values for rollback on error
+    final String oldJobId = selectedJobId!;
+    final Map<String, dynamic>? oldJobData = selectedJobData;
+
+    setState(() {
+      isLoading = true;
+      selectedJobId =
+          null; // Null immediately to avoid DropdownButton assert during stream update
+      // Keep selectedJobData intact for now
+    });
+
+    try {
+      // Create a batch for atomic operations
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      // Delete the job from JobsPosted
+      batch.delete(
+        FirebaseFirestore.instance.collection('JobsPosted').doc(oldJobId),
+      );
+
+      // Fetch all scheduled interviews for this job
+      final interviewsSnapshot = await FirebaseFirestore.instance
+          .collection('ScheduledInterviews')
+          .where('jobId', isEqualTo: oldJobId)
+          .get();
+
+      // Add deletions for each interview to the batch
+      for (var doc in interviewsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Commit the batch
+      await batch.commit();
+
+      // On success: null data and reset metrics
+      setState(() {
+        selectedJobData = null;
+        isLoading = false;
+        // Reset metrics
+        totalApplications = 0;
+        scheduledInterviews = 0;
+        conductedInterviews = 0;
+        hiredCandidates = 0;
+        offersSent = 0;
+      });
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Job & scheduled interviews deleted successfully.'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      // On error: rollback to old state (nothing was deleted due to batch)
+      setState(() {
+        selectedJobId = oldJobId;
+        selectedJobData = oldJobData;
+        isLoading = false;
+        // Metrics remain as they were (no reset)
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting job: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildDateInfo(String label, String value, IconData icon) {

@@ -2404,7 +2404,8 @@ class _HomeScreenState extends State<HomeScreen>
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => CareerFitSuggestionsScreen()),
+              MaterialPageRoute(
+                  builder: (context) => CareerFitSuggestionsScreen()),
             );
           },
         ),
@@ -3927,7 +3928,7 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
   }
 }
 
-class JobseekerProfileForm extends StatefulWidget {
+class      JobseekerProfileForm extends StatefulWidget {
   final File? resumeFile;
 
   const JobseekerProfileForm({Key? key, this.resumeFile}) : super(key: key);

@@ -5,6 +5,31 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'dart:developer' as developer;
 import 'package:flutter/services.dart';
+import 'package:googleapis/gmail/v1.dart' as g;
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:typed_data';
+
+// Custom HTTP client for Google APIs authentication
+class GoogleAuthClient extends http.BaseClient {
+  final Map<String, String> _headers;
+  final http.Client _client = http.Client();
+  GoogleAuthClient(String accessToken)
+      : _headers = {
+          'Authorization': 'Bearer $accessToken',
+          'X-Goog-AuthUser': '0',
+        };
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    return _client.send(request..headers.addAll(_headers));
+  }
+
+  @override
+  void close() {
+    _client.close();
+  }
+}
 
 class JobSeekerOffersScreen extends StatefulWidget {
   const JobSeekerOffersScreen({Key? key}) : super(key: key);
@@ -15,11 +40,15 @@ class JobSeekerOffersScreen extends StatefulWidget {
 
 class _JobSeekerOffersScreenState extends State<JobSeekerOffersScreen> {
   String? candidateId;
+  final GoogleSignIn _googleSignIn =
+      GoogleSignIn(scopes: ['https://www.googleapis.com/auth/gmail.send']);
+  g.GmailApi? _gmailApi;
 
   @override
   void initState() {
     super.initState();
     _initializeCandidateId();
+    _initializeGmail();
   }
 
   void _initializeCandidateId() {
@@ -34,6 +63,163 @@ class _JobSeekerOffersScreenState extends State<JobSeekerOffersScreen> {
         );
         // Optionally: Navigator.pushReplacementNamed(context, '/login');
       });
+    }
+  }
+
+  Future<void> _initializeGmail() async {
+    try {
+      final account = await _googleSignIn.signInSilently();
+      if (account == null) {
+        // Don't force sign-in here, wait until actually sending email
+        return;
+      }
+      final authentication = await account.authentication;
+      final httpClient = GoogleAuthClient(authentication.accessToken!);
+      _gmailApi = g.GmailApi(httpClient);
+    } catch (e) {
+      developer.log('Gmail init error: $e');
+    }
+  }
+
+  Future<String> _getCandidateEmail(String candidateId) async {
+    try {
+      final profileDoc = await FirebaseFirestore.instance
+          .collection('JobSeekersProfiles')
+          .doc(candidateId)
+          .get();
+      return profileDoc.data()?['email'] ?? '';
+    } catch (e) {
+      developer.log('Error fetching candidate email: $e');
+      return '';
+    }
+  }
+
+  String _encodeEmail(String from, String to, String subject, String body) {
+    const charset = 'UTF-8';
+    final fromEncoded = '=?$charset?B?${base64Encode(utf8.encode(from))}?=';
+    final subjectEncoded =
+        '=?$charset?B?${base64Encode(utf8.encode(subject))}?=';
+    final message = 'From: $fromEncoded\r\n'
+        'To: $to\r\n'
+        'Subject: $subjectEncoded\r\n'
+        'MIME-Version: 1.0\r\n'
+        'Content-Type: text/html; charset="$charset"\r\n'
+        '\r\n'
+        '$body';
+    return base64
+        .encode(utf8.encode(message))
+        .replaceAll('+', '-')
+        .replaceAll('/', '_')
+        .replaceAll('=', '');
+  }
+
+  Future<String> _getRecruiterEmail(String recruiterId) async {
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(recruiterId)
+          .get();
+      return userDoc.data()?['email'] ?? '';
+    } catch (e) {
+      developer.log('Error fetching recruiter email: $e');
+      return '';
+    }
+  }
+
+  Future<void> _notifyRecruiter({
+    required String recruiterEmail,
+    required String candidateName,
+    required String candidateEmail,
+    required String jobTitle,
+    required String action, // 'rejected' or 'expired'
+    required String offerId,
+  }) async {
+    if (recruiterEmail.isEmpty) {
+      developer.log('Skipping notification—recruiter email missing.');
+      return;
+    }
+    // Sign in if not already signed in
+    if (_gmailApi == null) {
+      try {
+        final account = await _googleSignIn.signIn();
+        if (account != null) {
+          final authentication = await account.authentication;
+          final httpClient = GoogleAuthClient(authentication.accessToken!);
+          _gmailApi = g.GmailApi(httpClient);
+        }
+      } catch (e) {
+        developer.log('Gmail sign-in error: $e');
+        return;
+      }
+    }
+    if (_gmailApi == null) {
+      developer.log('Gmail API not initialized.');
+      return;
+    }
+    String subject;
+    String body;
+    if (action == 'rejected') {
+      subject = 'Candidate Rejected Offer: $jobTitle';
+      body = '''
+<p>Dear Recruiter,</p>
+<p>The candidate <strong>$candidateName</strong> ($candidateEmail) has rejected the offer for <strong>$jobTitle</strong> (Offer ID: $offerId).</p>
+<p><strong>Suggestions:</strong></p>
+<ul>
+  <li>Choose the next pending candidate from the Candidate Pool.</li>
+  <li>Start an In-App Chat with $candidateName to discuss further.</li>
+</ul>
+<p>Best regards,<br>Smart Recruit App</p>
+      ''';
+    } else {
+      // expired
+      subject = 'Offer Expired for $jobTitle';
+      body = '''
+<p>Dear Recruiter,</p>
+<p>The offer for <strong>$candidateName</strong> ($candidateEmail) for <strong>$jobTitle</strong> (Offer ID: $offerId) has expired without response.</p>
+<p><strong>Suggestions:</strong></p>
+<ul>
+  <li>Choose the next pending candidate from the Candidate Pool.</li>
+  <li>Start an In-App Chat with $candidateName to discuss further.</li>
+</ul>
+<p>Best regards,<br>Smart Recruit App</p>
+      ''';
+    }
+    try {
+      final message = g.Message()
+        ..raw = _encodeEmail('Smart Recruit App <no-reply@smartrecruit.com>',
+            recruiterEmail, subject, body);
+      await _gmailApi!.users.messages.send(message, 'me');
+      developer.log('Notification email sent to $recruiterEmail');
+    } catch (e) {
+      developer.log('Notification email sending error: $e');
+    }
+  }
+
+  Future<void> _updateAppliedCandidatesStatus(String offerId, String action) async {
+    try {
+      final offerDoc = await FirebaseFirestore.instance
+          .collection('OfferLetters')
+          .doc(offerId)
+          .get();
+      if (!offerDoc.exists) return;
+      final offer = offerDoc.data()!;
+      final candidateId = offer['candidateId'];
+      final jobId = offer['jobId'];
+      final status = action == 'accepted' ? 'OfferAccepted' : 'OfferRejected';
+
+      final appliedQuery = await FirebaseFirestore.instance
+          .collection('AppliedCandidates')
+          .where('candidateId', isEqualTo: candidateId)
+          .where('jobId', isEqualTo: jobId)
+          .limit(1)
+          .get();
+
+      if (appliedQuery.docs.isNotEmpty) {
+        await appliedQuery.docs.first.reference.update({'status': status});
+        developer.log('Updated AppliedCandidates status to $status for candidate $candidateId, job $jobId');
+      }
+    } catch (e) {
+      developer.log('Error updating AppliedCandidates: $e');
     }
   }
 
@@ -175,6 +361,23 @@ class _JobSeekerOffersScreenState extends State<JobSeekerOffersScreen> {
                       .update({
                     'status': 'rejected',
                     'respondedAt': FieldValue.serverTimestamp(),
+                    'notificationSent':
+                        true, // Flag to avoid duplicate notifications
+                  }).then((_) async {
+                    // Update AppliedCandidates for expired (treat as rejected)
+                    await _updateAppliedCandidatesStatus(offerId, 'rejected');
+                    // Send notification after update
+                    final candidateEmail = await _getCandidateEmail(offer['candidateId']);
+                    final recruiterEmail =
+                        await _getRecruiterEmail(offer['recruiterId']);
+                    await _notifyRecruiter(
+                      recruiterEmail: recruiterEmail,
+                      candidateName: offer['candidateName'],
+                      candidateEmail: candidateEmail,
+                      jobTitle: offer['jobTitle'],
+                      action: 'expired',
+                      offerId: offerId,
+                    );
                   }).catchError((e) {
                     developer.log('Error updating expired offer: $e');
                   });
@@ -504,9 +707,21 @@ class _JobSeekerOffersScreenState extends State<JobSeekerOffersScreen> {
             .update({
           'status': 'rejected',
           'respondedAt': FieldValue.serverTimestamp(),
-        }).catchError((e) {
-          developer.log('Error updating expired offer: $e');
+          'notificationSent': true, // Flag to avoid duplicate notifications
         });
+        // Update AppliedCandidates for expired (treat as rejected)
+        await _updateAppliedCandidatesStatus(offerId, 'rejected');
+        // Send notification after update
+        final candidateEmail = await _getCandidateEmail(offer['candidateId']);
+        final recruiterEmail = await _getRecruiterEmail(offer['recruiterId']);
+        await _notifyRecruiter(
+          recruiterEmail: recruiterEmail,
+          candidateName: offer['candidateName'],
+          candidateEmail: candidateEmail,
+          jobTitle: offer['jobTitle'],
+          action: 'expired',
+          offerId: offerId,
+        );
         currentStatus = 'rejected';
       }
     }
@@ -917,7 +1132,32 @@ class _JobSeekerOffersScreenState extends State<JobSeekerOffersScreen> {
                         .update({
                       'status': action,
                       'respondedAt': FieldValue.serverTimestamp(),
+                      if (action == 'rejected') 'notificationSent': true,
                     });
+                    // Update AppliedCandidates
+                    await _updateAppliedCandidatesStatus(offerId, action);
+                    // Send notification for rejection
+                    if (action == 'rejected') {
+                      // Fetch offer data again to get details
+                      final updatedOfferDoc = await FirebaseFirestore.instance
+                          .collection('OfferLetters')
+                          .doc(offerId)
+                          .get();
+                      if (updatedOfferDoc.exists) {
+                        final updatedOffer = updatedOfferDoc.data()!;
+                        final candidateEmail = await _getCandidateEmail(updatedOffer['candidateId']);
+                        final recruiterEmail = await _getRecruiterEmail(
+                            updatedOffer['recruiterId']);
+                        await _notifyRecruiter(
+                          recruiterEmail: recruiterEmail,
+                          candidateName: updatedOffer['candidateName'],
+                          candidateEmail: candidateEmail,
+                          jobTitle: updatedOffer['jobTitle'],
+                          action: 'rejected',
+                          offerId: offerId,
+                        );
+                      }
+                    }
                     Navigator.pop(bottomSheetContext); // Close bottom sheet
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(

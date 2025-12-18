@@ -161,7 +161,7 @@ Ensure the response is in plain text, with each question block separated by '---
             'Authorization': 'Bearer $apiKey',
           },
           body: json.encode({
-            'model': 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free',
+            'model': 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
             'messages': [
               {'role': 'user', 'content': prompt}
             ],

@@ -7,7 +7,8 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // For Timestamp handling
 class MatchingService {
   final String apiUrl;
 
-  MatchingService({this.apiUrl = "http://192.168.10.2:7860"});
+  // Constructor with default URL or custom URL
+   MatchingService({this.apiUrl = "https://MIA1924-job-matching-api.hf.space"});
 
   Future<Map<String, dynamic>> matchCandidate(
       Map<String, dynamic> job, Map<String, dynamic> candidate) async {

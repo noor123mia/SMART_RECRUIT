@@ -1071,7 +1071,7 @@ Please ensure:
           "Content-Type": "application/json"
         },
         body: jsonEncode({
-          "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+          "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
           "messages": [
             {
               "role": "system",

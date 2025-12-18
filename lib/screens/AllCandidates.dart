@@ -1362,7 +1362,8 @@ class _AppliedCandidatesScreenState extends State<AppliedCandidatesScreen> {
         );
       },
     );
-  }
+  } 
+  
 
   void _updateApplicationStatus(
       BuildContext context, String applicationId, String newStatus) async {
